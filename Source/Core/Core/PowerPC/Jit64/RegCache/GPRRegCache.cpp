@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/PowerPC/Jit64/RegCache/GPRRegCache.h"
 
@@ -16,17 +15,19 @@ GPRRegCache::GPRRegCache(Jit64& jit) : RegCache{jit}
 
 void GPRRegCache::StoreRegister(preg_t preg, const OpArg& new_loc)
 {
-  m_emitter->MOV(32, new_loc, m_regs[preg].Location());
+  ASSERT_MSG(DYNA_REC, !m_regs[preg].IsDiscarded(), "Discarded register - {}", preg);
+  m_emitter->MOV(32, new_loc, m_regs[preg].Location().value());
 }
 
 void GPRRegCache::LoadRegister(preg_t preg, X64Reg new_loc)
 {
-  m_emitter->MOV(32, ::Gen::R(new_loc), m_regs[preg].Location());
+  ASSERT_MSG(DYNA_REC, !m_regs[preg].IsDiscarded(), "Discarded register - {}", preg);
+  m_emitter->MOV(32, ::Gen::R(new_loc), m_regs[preg].Location().value());
 }
 
 OpArg GPRRegCache::GetDefaultLocation(preg_t preg) const
 {
-  return PPCSTATE(gpr[preg]);
+  return PPCSTATE_GPR(preg);
 }
 
 const X64Reg* GPRRegCache::GetAllocationOrder(size_t* count) const
@@ -56,7 +57,7 @@ void GPRRegCache::SetImmediate32(preg_t preg, u32 imm_value, bool dirty)
 
 BitSet32 GPRRegCache::GetRegUtilization() const
 {
-  return m_jit.js.op->gprInReg;
+  return m_jit.js.op->gprInUse;
 }
 
 BitSet32 GPRRegCache::CountRegsIn(preg_t preg, u32 lookahead) const

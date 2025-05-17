@@ -1,6 +1,7 @@
 project(hidapi)
 
 add_library(hidapi STATIC hidapi/hidapi.h)
+dolphin_disable_warnings_msvc(hidapi)
 target_include_directories(hidapi PUBLIC hidapi)
 
 if(APPLE)
@@ -11,12 +12,13 @@ elseif(WIN32)
     target_link_libraries(hidapi PRIVATE winmm setupapi)
   endif()
 else()
-  find_package(Libudev)
+  find_package(LIBUDEV)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LIBUDEV_FOUND)
     target_sources(hidapi PRIVATE linux/hid.c)
     target_link_libraries(hidapi PRIVATE udev)
   else()
     target_sources(hidapi PRIVATE libusb/hid.c)
+    target_link_libraries(hidapi PRIVATE ${LIBUSB_LIBRARIES})
   endif()
 endif()
 

@@ -1,9 +1,9 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -11,12 +11,17 @@
 
 class PointerWrap;
 
+namespace Core
+{
+class CPUThreadGuard;
+};
+
 namespace Gecko
 {
 class GeckoCode
 {
 public:
-  GeckoCode() : enabled(false) {}
+  GeckoCode() = default;
   struct Code
   {
     u32 address = 0;
@@ -59,11 +64,11 @@ constexpr u32 HLE_TRAMPOLINE_ADDRESS = INSTALLER_END_ADDRESS - 4;
 // preserve the emulation performance.
 constexpr u32 MAGIC_GAMEID = 0xD01F1BAD;
 
-void SetActiveCodes(const std::vector<GeckoCode>& gcodes);
+void SetActiveCodes(std::span<const GeckoCode> gcodes);
 void SetSyncedCodesAsActive();
-void UpdateSyncedCodes(const std::vector<GeckoCode>& gcodes);
-std::vector<GeckoCode> SetAndReturnActiveCodes(const std::vector<GeckoCode>& gcodes);
-void RunCodeHandler();
+void UpdateSyncedCodes(std::span<const GeckoCode> gcodes);
+std::vector<GeckoCode> SetAndReturnActiveCodes(std::span<const GeckoCode> gcodes);
+void RunCodeHandler(const Core::CPUThreadGuard& guard);
 void Shutdown();
 void DoState(PointerWrap&);
 

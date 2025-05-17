@@ -8,7 +8,6 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_definitions(-DUNICODE)
   add_definitions(-D_UNICODE)
   add_definitions(-DWIN32_LEAN_AND_MEAN)
-  add_definitions(-D_WIN32_WINNT=0x0602)
   add_definitions(-D_SCL_SECURE_NO_WARNINGS)
   add_definitions(-D_CRT_SECURE_NO_WARNINGS)
   add_definitions(-D_CRT_SECURE_NO_DEPRECATE)
@@ -16,53 +15,50 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_definitions(-D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+if (NOT MSVC)
+  set(CMAKE_CXX_STANDARD 20)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if (MSVC)
-	# TODO: Use https://cmake.org/cmake/help/latest/policy/CMP0092.html instead (once we can require CMake >= 3.15)
-  # Taken from http://www.cmake.org/Wiki/CMake_FAQ#Dynamic_Replace.
-  foreach(flag_var
-	        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-					MAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-		# Replaces /W3 with /W4 in defaults (add_compile_options would cause very annoying warnings here)
-    string(REPLACE "/W3" "/W4" ${flag_var} "${${flag_var}}")
-  endforeach()
-
-  # Disable some warnings
-  add_compile_options(
-    /wd4201 # nonstandard extension used : nameless struct/union
-    /wd4127 # conditional expression is constant
-    /wd4100 # 'identifier' : unreferenced formal parameter
-    /wd4200 # InputCommon fix temp.
-    /wd4244 # 'conversion' conversion from 'type1' to 'type2', possible loss of data
-    /wd4121 # 'symbol' : alignment of a member was sensitive to packing
-    /wd4324 # Padding was added at the end of a structure because you specified a __declspec(align) value.
-    /wd4714 # function 'function' marked as __forceinline not inlined
-    /wd4351 # new behavior: elements of array 'array' will be default initialized
-    # TODO: Enable this warning once possible
-    /wd4245 # conversion from 'type1' to 'type2', signed/unsigned mismatch
-    # Currently jits use some annoying code patterns which makes this common
-  )
-
-  # Additional warnings
-  add_compile_options(
-    /w44263 # Non-virtual member function hides base class virtual function
-    /w44265 # Class has virtual functions, but destructor is not virtual
-  )
-
-  # All files are encoded as UTF-8
-  add_compile_options(/utf-8)
-
-  # Use PCH
+  # Compile PCH
   add_subdirectory(PCH)
-  add_definitions(/I${PCH_DIRECTORY})
-  add_definitions(/Yu${PCH_PATH}) 
+else()
+  check_and_add_flag(HAVE_WALL -Wall)
+  # TODO: would like these but they produce overwhelming amounts of warnings
+  #check_and_add_flag(EXTRA -Wextra)
+  #check_and_add_flag(MISSING_FIELD_INITIALIZERS -Wmissing-field-initializers)
+  #check_and_add_flag(SWITCH_DEFAULT -Wswitch-default)
+  #check_and_add_flag(FLOAT_EQUAL -Wfloat-equal)
+  #check_and_add_flag(CONVERSION -Wconversion)
+  #check_and_add_flag(ZERO_AS_NULL_POINTER_CONSTANT -Wzero-as-null-pointer-constant)
+  check_and_add_flag(TYPE_LIMITS -Wtype-limits)
+  check_and_add_flag(SIGN_COMPARE -Wsign-compare)
+  check_and_add_flag(IGNORED_QUALIFIERS -Wignored-qualifiers)
+  check_and_add_flag(UNINITIALIZED -Wuninitialized)
+  check_and_add_flag(LOGICAL_OP -Wlogical-op)
+  check_and_add_flag(SHADOW -Wshadow)
+  check_and_add_flag(INIT_SELF -Winit-self)
+  check_and_add_flag(MISSING_DECLARATIONS -Wmissing-declarations)
+  check_and_add_flag(MISSING_VARIABLE_DECLARATIONS -Wmissing-variable-declarations)
 
-	# Don't include timestamps in binaries
-	add_link_options(/Brepro)
+  # Disable -Wstringop-truncation warnings as they result in many false positives.
+  # In most (all?) cases where std::strncpy is used, we want to fill the entire buffer
+  # or match emulated code that also ignores the null terminator, so the warnings are not useful.
+  # Given that Dolphin itself mostly uses std::string, they do not really help catch any bugs.
+  check_cxx_compiler_flag(-Wstringop-truncation HAS_STRINGOP_TRUNCATION_WARNING)
+  if (HAS_STRINGOP_TRUNCATION_WARNING)
+    check_and_add_flag(NO_STRINGOP_TRUNCATION -Wno-stringop-truncation)
+  endif()
+
+  # Format string issues that the compiler can detect should be compile time errors.
+  check_cxx_compiler_flag(-Wformat HAS_FORMAT_WARNING)
+  if (HAS_FORMAT_WARNING)
+    check_and_add_flag(FORMAT_WARNING_TO_ERROR -Werror=format)
+  endif()
 endif()
 
 # These aren't actually needed for C11/C++11

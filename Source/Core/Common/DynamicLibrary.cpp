@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/DynamicLibrary.h"
 
@@ -25,9 +24,20 @@ DynamicLibrary::DynamicLibrary(const char* filename)
   Open(filename);
 }
 
+DynamicLibrary::DynamicLibrary(void* handle)
+{
+  m_handle = handle;
+}
+
 DynamicLibrary::~DynamicLibrary()
 {
   Close();
+}
+
+DynamicLibrary& DynamicLibrary::operator=(void* handle)
+{
+  m_handle = handle;
+  return *this;
 }
 
 std::string DynamicLibrary::GetUnprefixedFilename(const char* filename)

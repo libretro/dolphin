@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -29,6 +28,7 @@ enum class TurntableGroup;
 enum class UDrawTabletGroup;
 enum class DrawsomeTabletGroup;
 enum class TaTaConGroup;
+enum class ShinkansenGroup;
 }  // namespace WiimoteEmu
 
 enum
@@ -53,8 +53,16 @@ enum class WiimoteSource
 
 namespace WiimoteCommon
 {
-WiimoteSource GetSource(unsigned int index);
+class HIDWiimote;
+
 void SetSource(unsigned int index, WiimoteSource source);
+
+// Used to reconnect WiimoteDevice instance to HID source.
+// Must be run from CPU thread.
+void UpdateSource(unsigned int index);
+
+HIDWiimote* GetHIDWiimoteSource(unsigned int index);
+
 }  // namespace WiimoteCommon
 
 namespace Wiimote
@@ -67,12 +75,9 @@ enum class InitializeMode
 
 // The Real Wii Remote sends report every ~5ms (200 Hz).
 constexpr int UPDATE_FREQ = 200;
-// Custom channel ID used in ControlChannel to indicate disconnects
-constexpr int DOLPHIN_DISCONNET_CONTROL_CHANNEL = 99;
 
 void Shutdown();
 void Initialize(InitializeMode init_mode);
-void Connect(unsigned int index, bool connect);
 void ResetAllWiimotes();
 void LoadConfig();
 void Resume();
@@ -90,12 +95,7 @@ ControllerEmu::ControlGroup* GetUDrawTabletGroup(int number, WiimoteEmu::UDrawTa
 ControllerEmu::ControlGroup* GetDrawsomeTabletGroup(int number,
                                                     WiimoteEmu::DrawsomeTabletGroup group);
 ControllerEmu::ControlGroup* GetTaTaConGroup(int number, WiimoteEmu::TaTaConGroup group);
-
-void ControlChannel(int number, u16 channel_id, const void* data, u32 size);
-void InterruptChannel(int number, u16 channel_id, const void* data, u32 size);
-bool ButtonPressed(int number);
-void Update(int number, bool connected);
-bool NetPlay_GetButtonPress(int wiimote, bool pressed);
+ControllerEmu::ControlGroup* GetShinkansenGroup(int number, WiimoteEmu::ShinkansenGroup group);
 }  // namespace Wiimote
 
 namespace WiimoteReal
@@ -106,7 +106,5 @@ void Shutdown();
 void Resume();
 void Pause();
 void Refresh();
-
-void LoadSettings();
 
 }  // namespace WiimoteReal

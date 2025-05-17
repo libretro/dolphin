@@ -1,50 +1,49 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
-#include "DolphinQt/Config/Graphics/GraphicsWidget.h"
+#include <QWidget>
 
+class ConfigBool;
 class GraphicsWindow;
-class QCheckBox;
 class QLabel;
-class QRadioButton;
-class QSlider;
+class ToolTipSlider;
 
-class HacksWidget final : public GraphicsWidget
+class HacksWidget final : public QWidget
 {
   Q_OBJECT
 public:
   explicit HacksWidget(GraphicsWindow* parent);
 
 private:
-  void LoadSettings() override;
-  void SaveSettings() override;
+  void LoadSettings();
+  void SaveSettings();
 
   void OnBackendChanged(const QString& backend_name);
 
   // EFB
-  QCheckBox* m_skip_efb_cpu;
-  QCheckBox* m_ignore_format_changes;
-  QCheckBox* m_store_efb_copies;
+  ConfigBool* m_skip_efb_cpu;
+  ConfigBool* m_ignore_format_changes;
+  ConfigBool* m_store_efb_copies;
+  ConfigBool* m_defer_efb_copies;
 
   // Texture Cache
   QLabel* m_accuracy_label;
-  QSlider* m_accuracy;
-  QCheckBox* m_gpu_texture_decoding;
+  ToolTipSlider* m_accuracy;
+  ConfigBool* m_gpu_texture_decoding;
 
   // External Framebuffer
-  QCheckBox* m_store_xfb_copies;
-  QCheckBox* m_immediate_xfb;
-  QCheckBox* m_skip_duplicate_xfbs;
+  ConfigBool* m_store_xfb_copies;
+  ConfigBool* m_immediate_xfb;
+  ConfigBool* m_skip_duplicate_xfbs;
 
   // Other
-  QCheckBox* m_fast_depth_calculation;
-  QCheckBox* m_disable_bounding_box;
-  QCheckBox* m_vertex_rounding;
-  QCheckBox* m_save_texture_cache_state;
-  QCheckBox* m_defer_efb_copies;
+  ConfigBool* m_fast_depth_calculation;
+  ConfigBool* m_disable_bounding_box;
+  ConfigBool* m_vertex_rounding;
+  ConfigBool* m_vi_skip;
+  ConfigBool* m_save_texture_cache_state;
 
   void CreateWidgets();
   void ConnectWidgets();

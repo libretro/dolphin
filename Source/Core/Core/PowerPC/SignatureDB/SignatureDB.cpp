@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/PowerPC/SignatureDB/SignatureDB.h"
 
@@ -22,9 +21,9 @@ namespace
 {
 SignatureDB::HandlerType GetHandlerType(const std::string& file_path)
 {
-  if (StringEndsWith(file_path, ".csv"))
+  if (file_path.ends_with(".csv"))
     return SignatureDB::HandlerType::CSV;
-  if (StringEndsWith(file_path, ".mega"))
+  if (file_path.ends_with(".mega"))
     return SignatureDB::HandlerType::MEGA;
   return SignatureDB::HandlerType::DSY;
 }
@@ -77,20 +76,22 @@ void SignatureDB::Populate(const PPCSymbolDB* func_db, const std::string& filter
   m_handler->Populate(func_db, filter);
 }
 
-void SignatureDB::Apply(PPCSymbolDB* func_db) const
+void SignatureDB::Apply(const Core::CPUThreadGuard& guard, PPCSymbolDB* func_db) const
 {
-  m_handler->Apply(func_db);
+  m_handler->Apply(guard, func_db);
 }
 
-bool SignatureDB::Add(u32 start_addr, u32 size, const std::string& name)
+bool SignatureDB::Add(const Core::CPUThreadGuard& guard, u32 start_addr, u32 size,
+                      const std::string& name)
 {
-  return m_handler->Add(start_addr, size, name);
+  return m_handler->Add(guard, start_addr, size, name);
 }
 
 // Adds a known function to the hash database
-bool HashSignatureDB::Add(u32 startAddr, u32 size, const std::string& name)
+bool HashSignatureDB::Add(const Core::CPUThreadGuard& guard, u32 startAddr, u32 size,
+                          const std::string& name)
 {
-  u32 hash = ComputeCodeChecksum(startAddr, startAddr + size - 4);
+  u32 hash = ComputeCodeChecksum(guard, startAddr, startAddr + size - 4);
 
   DBFunc temp_dbfunc;
   temp_dbfunc.size = size;
@@ -109,10 +110,10 @@ void HashSignatureDB::List() const
 {
   for (const auto& entry : m_database)
   {
-    DEBUG_LOG(SYMBOLS, "%s : %i bytes, hash = %08x", entry.second.name.c_str(), entry.second.size,
-              entry.first);
+    DEBUG_LOG_FMT(SYMBOLS, "{} : {} bytes, hash = {:08x}", entry.second.name, entry.second.size,
+                  entry.first);
   }
-  INFO_LOG(SYMBOLS, "%zu functions known in current database.", m_database.size());
+  INFO_LOG_FMT(SYMBOLS, "{} functions known in current database.", m_database.size());
 }
 
 void HashSignatureDB::Clear()
@@ -120,7 +121,7 @@ void HashSignatureDB::Clear()
   m_database.clear();
 }
 
-void HashSignatureDB::Apply(PPCSymbolDB* symbol_db) const
+void HashSignatureDB::Apply(const Core::CPUThreadGuard& guard, PPCSymbolDB* symbol_db) const
 {
   for (const auto& entry : m_database)
   {
@@ -130,13 +131,13 @@ void HashSignatureDB::Apply(PPCSymbolDB* symbol_db) const
       function->Rename(entry.second.name);
       if (entry.second.size == static_cast<unsigned int>(function->size))
       {
-        INFO_LOG(SYMBOLS, "Found %s at %08x (size: %08x)!", entry.second.name.c_str(),
-                 function->address, function->size);
+        INFO_LOG_FMT(SYMBOLS, "Found {} at {:08x} (size: {:08x})!", entry.second.name,
+                     function->address, function->size);
       }
       else
       {
-        ERROR_LOG(SYMBOLS, "Wrong size! Found %s at %08x (size: %08x instead of %08x)!",
-                  entry.second.name.c_str(), function->address, function->size, entry.second.size);
+        ERROR_LOG_FMT(SYMBOLS, "Wrong size! Found {} at {:08x} (size: {:08x} instead of {:08x})!",
+                      entry.second.name, function->address, function->size, entry.second.size);
       }
     }
   }
@@ -159,12 +160,13 @@ void HashSignatureDB::Populate(const PPCSymbolDB* symbol_db, const std::string& 
   }
 }
 
-u32 HashSignatureDB::ComputeCodeChecksum(u32 offsetStart, u32 offsetEnd)
+u32 HashSignatureDB::ComputeCodeChecksum(const Core::CPUThreadGuard& guard, u32 offsetStart,
+                                         u32 offsetEnd)
 {
   u32 sum = 0;
   for (u32 offset = offsetStart; offset <= offsetEnd; offset += 4)
   {
-    u32 opcode = PowerPC::HostRead_Instruction(offset);
+    u32 opcode = PowerPC::MMU::HostRead_Instruction(guard, offset);
     u32 op = opcode & 0xFC000000;
     u32 op2 = 0;
     u32 op3 = 0;

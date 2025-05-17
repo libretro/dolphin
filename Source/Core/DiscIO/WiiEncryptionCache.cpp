@@ -1,6 +1,5 @@
 // Copyright 2020 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DiscIO/WiiEncryptionCache.h"
 
@@ -31,7 +30,7 @@ WiiEncryptionCache::EncryptGroup(u64 offset, u64 partition_data_offset,
   if (!m_cache)
   {
     m_cache = std::make_unique<std::array<u8, VolumeWii::GROUP_TOTAL_SIZE>>();
-    ASSERT(m_blob->SupportsReadWiiDecrypted());
+    m_cached_offset = std::numeric_limits<u64>::max();
   }
 
   ASSERT(offset % VolumeWii::GROUP_TOTAL_SIZE == 0);

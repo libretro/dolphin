@@ -1,4 +1,4 @@
-// This file is public domain, in case it's useful to anyone. -comex
+// SPDX-License-Identifier: CC0-1.0
 
 #include "Common/TraversalClient.h"
 
@@ -12,6 +12,8 @@
 #include "Common/Random.h"
 #include "Core/NetPlayProto.h"
 
+namespace Common
+{
 TraversalClient::TraversalClient(ENetHost* netHost, const std::string& server, const u16 port)
     : m_NetHost(netHost), m_Server(server), m_port(port)
 {
@@ -27,6 +29,11 @@ TraversalClient::~TraversalClient() = default;
 TraversalHostId TraversalClient::GetHostID() const
 {
   return m_HostId;
+}
+
+TraversalInetAddress TraversalClient::GetExternalAddress() const
+{
+  return m_external_address;
 }
 
 TraversalClient::State TraversalClient::GetState() const
@@ -48,41 +55,41 @@ void TraversalClient::ReconnectToServer()
   }
   m_ServerAddress.port = m_port;
 
-  m_State = Connecting;
+  m_State = State::Connecting;
 
   TraversalPacket hello = {};
-  hello.type = TraversalPacketHelloFromClient;
+  hello.type = TraversalPacketType::HelloFromClient;
   hello.helloFromClient.protoVersion = TraversalProtoVersion;
   SendTraversalPacket(hello);
   if (m_Client)
     m_Client->OnTraversalStateChanged();
 }
 
-static ENetAddress MakeENetAddress(TraversalInetAddress* address)
+static ENetAddress MakeENetAddress(const TraversalInetAddress& address)
 {
-  ENetAddress eaddr;
-  if (address->isIPV6)
+  ENetAddress eaddr{};
+  if (address.isIPV6)
   {
     eaddr.port = 0;  // no support yet :(
   }
   else
   {
-    eaddr.host = address->address[0];
-    eaddr.port = ntohs(address->port);
+    eaddr.host = address.address[0];
+    eaddr.port = ntohs(address.port);
   }
   return eaddr;
 }
 
-void TraversalClient::ConnectToClient(const std::string& host)
+void TraversalClient::ConnectToClient(std::string_view host)
 {
   if (host.size() > sizeof(TraversalHostId))
   {
-    PanicAlert("host too long");
+    PanicAlertFmt("Host too long");
     return;
   }
   TraversalPacket packet = {};
-  packet.type = TraversalPacketConnectPlease;
-  memcpy(packet.connectPlease.hostId.data(), host.c_str(), host.size());
+  packet.type = TraversalPacketType::ConnectPlease;
+  memcpy(packet.connectPlease.hostId.data(), host.data(), host.size());
   m_ConnectRequestId = SendTraversalPacket(packet);
   m_PendingConnect = true;
 }
@@ -93,7 +100,7 @@ bool TraversalClient::TestPacket(u8* data, size_t size, ENetAddress* from)
   {
     if (size < sizeof(TraversalPacket))
     {
-      ERROR_LOG(NETPLAY, "Received too-short traversal packet.");
+      ERROR_LOG_FMT(NETPLAY, "Received too-short traversal packet.");
     }
     else
     {
@@ -129,7 +136,7 @@ void TraversalClient::HandleServerPacket(TraversalPacket* packet)
   u8 ok = 1;
   switch (packet->type)
   {
-  case TraversalPacketAck:
+  case TraversalPacketType::Ack:
     if (!packet->ack.ok)
     {
       OnFailure(FailureReason::ServerForgotAboutUs);
@@ -144,8 +151,8 @@ void TraversalClient::HandleServerPacket(TraversalPacket* packet)
       }
     }
     break;
-  case TraversalPacketHelloFromServer:
-    if (m_State != Connecting)
+  case TraversalPacketType::HelloFromServer:
+    if (!IsConnecting())
       break;
     if (!packet->helloFromServer.ok)
     {
@@ -153,14 +160,15 @@ void TraversalClient::HandleServerPacket(TraversalPacket* packet)
       break;
     }
     m_HostId = packet->helloFromServer.yourHostId;
-    m_State = Connected;
+    m_external_address = packet->helloFromServer.yourAddress;
+    m_State = State::Connected;
     if (m_Client)
       m_Client->OnTraversalStateChanged();
     break;
-  case TraversalPacketPleaseSendPacket:
+  case TraversalPacketType::PleaseSendPacket:
   {
     // security is overrated.
-    ENetAddress addr = MakeENetAddress(&packet->pleaseSendPacket.address);
+    ENetAddress addr = MakeENetAddress(packet->pleaseSendPacket.address);
     if (addr.port != 0)
     {
       char message[] = "Hello from Dolphin Netplay...";
@@ -176,8 +184,8 @@ void TraversalClient::HandleServerPacket(TraversalPacket* packet)
     }
     break;
   }
-  case TraversalPacketConnectReady:
-  case TraversalPacketConnectFailed:
+  case TraversalPacketType::ConnectReady:
+  case TraversalPacketType::ConnectFailed:
   {
     if (!m_PendingConnect || packet->connectReady.requestId != m_ConnectRequestId)
       break;
@@ -187,20 +195,20 @@ void TraversalClient::HandleServerPacket(TraversalPacket* packet)
     if (!m_Client)
       break;
 
-    if (packet->type == TraversalPacketConnectReady)
-      m_Client->OnConnectReady(MakeENetAddress(&packet->connectReady.address));
+    if (packet->type == TraversalPacketType::ConnectReady)
+      m_Client->OnConnectReady(MakeENetAddress(packet->connectReady.address));
     else
       m_Client->OnConnectFailed(packet->connectFailed.reason);
     break;
   }
   default:
-    WARN_LOG(NETPLAY, "Received unknown packet with type %d", packet->type);
+    WARN_LOG_FMT(NETPLAY, "Received unknown packet with type {}", static_cast<int>(packet->type));
     break;
   }
-  if (packet->type != TraversalPacketAck)
+  if (packet->type != TraversalPacketType::Ack)
   {
     TraversalPacket ack = {};
-    ack.type = TraversalPacketAck;
+    ack.type = TraversalPacketType::Ack;
     ack.requestId = packet->requestId;
     ack.ack.ok = ok;
 
@@ -214,7 +222,7 @@ void TraversalClient::HandleServerPacket(TraversalPacket* packet)
 
 void TraversalClient::OnFailure(FailureReason reason)
 {
-  m_State = Failure;
+  m_State = State::Failure;
   m_FailureReason = reason;
 
   if (m_Client)
@@ -257,10 +265,10 @@ void TraversalClient::HandleResends()
 void TraversalClient::HandlePing()
 {
   const u32 now = enet_time_get();
-  if (m_State == Connected && now - m_PingTime >= 500)
+  if (IsConnected() && now - m_PingTime >= 500)
   {
     TraversalPacket ping = {};
-    ping.type = TraversalPacketPing;
+    ping.type = TraversalPacketType::Ping;
     ping.ping.hostId = m_HostId;
     SendTraversalPacket(ping);
     m_PingTime = now;
@@ -291,14 +299,14 @@ int ENET_CALLBACK TraversalClient::InterceptCallback(ENetHost* host, ENetEvent* 
                                   &host->receivedAddress) ||
       (host->receivedDataLength == 1 && host->receivedData[0] == 0))
   {
-    event->type = (ENetEventType)42;
+    event->type = static_cast<ENetEventType>(Common::ENet::SKIPPABLE_EVENT);
     return 1;
   }
   return 0;
 }
 
 std::unique_ptr<TraversalClient> g_TraversalClient;
-std::unique_ptr<ENetHost> g_MainNetHost;
+ENet::ENetHostPtr g_MainNetHost;
 
 // The settings at the previous TraversalClient reset - notably, we
 // need to know not just what port it's on, but whether it was
@@ -317,17 +325,18 @@ bool EnsureTraversalClient(const std::string& server, u16 server_port, u16 liste
     g_OldListenPort = listen_port;
 
     ENetAddress addr = {ENET_HOST_ANY, listen_port};
-    ENetHost* host = enet_host_create(&addr,                   // address
-                                      50,                      // peerCount
-                                      NetPlay::CHANNEL_COUNT,  // channelLimit
-                                      0,                       // incomingBandwidth
-                                      0);                      // outgoingBandwidth
+    auto host = Common::ENet::ENetHostPtr{enet_host_create(&addr,                   // address
+                                                           50,                      // peerCount
+                                                           NetPlay::CHANNEL_COUNT,  // channelLimit
+                                                           0,    // incomingBandwidth
+                                                           0)};  // outgoingBandwidth
     if (!host)
     {
       g_MainNetHost.reset();
       return false;
     }
-    g_MainNetHost.reset(host);
+    host->mtu = std::min(host->mtu, NetPlay::MAX_ENET_MTU);
+    g_MainNetHost = std::move(host);
     g_TraversalClient.reset(new TraversalClient(g_MainNetHost.get(), server, server_port));
   }
   return true;
@@ -341,3 +350,4 @@ void ReleaseTraversalClient()
   g_TraversalClient.reset();
   g_MainNetHost.reset();
 }
+}  // namespace Common

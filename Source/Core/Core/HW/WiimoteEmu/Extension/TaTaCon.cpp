@@ -1,16 +1,17 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Extension/TaTaCon.h"
 
 #include <array>
-#include <cassert>
 #include <cstring>
 
+#include "Common/Assert.h"
 #include "Common/BitUtils.h"
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
+
+#include "Core/HW/WiimoteEmu/Extension/DesiredExtensionState.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 
 #include "InputCommon/ControllerEmu/Control/Input.h"
@@ -38,32 +39,41 @@ constexpr std::array<const char*, 2> position_names{{
 // i18n: The drum controller used in "Taiko no Tatsujin" games. Also known as a "TaTaCon".
 TaTaCon::TaTaCon() : Extension3rdParty("TaTaCon", _trans("Taiko Drum"))
 {
+  using Translatability = ControllerEmu::Translatability;
+
   // i18n: Refers to the "center" of a TaTaCon drum.
   groups.emplace_back(m_center = new ControllerEmu::Buttons(_trans("Center")));
   for (auto& name : position_names)
-    m_center->AddInput(ControllerEmu::Translate, name);
+    m_center->AddInput(Translatability::Translate, name);
 
   // i18n: Refers to the "rim" of a TaTaCon drum.
   groups.emplace_back(m_rim = new ControllerEmu::Buttons(_trans("Rim")));
   for (auto& name : position_names)
-    m_rim->AddInput(ControllerEmu::Translate, name);
+    m_rim->AddInput(Translatability::Translate, name);
 }
 
-void TaTaCon::Update()
+void TaTaCon::BuildDesiredExtensionState(DesiredExtensionState* target_state)
 {
   DataFormat tatacon_data = {};
 
-  m_center->GetState(&tatacon_data.state, center_bitmasks.data());
-  m_rim->GetState(&tatacon_data.state, rim_bitmasks.data());
+  m_center->GetState(&tatacon_data.state, center_bitmasks.data(), m_input_override_function);
+  m_rim->GetState(&tatacon_data.state, rim_bitmasks.data(), m_input_override_function);
 
   // Flip button bits.
   tatacon_data.state ^= 0xff;
 
-  Common::BitCastPtr<DataFormat>(&m_reg.controller_data) = tatacon_data;
+  target_state->data = tatacon_data;
+}
+
+void TaTaCon::Update(const DesiredExtensionState& target_state)
+{
+  DefaultExtensionUpdate<DataFormat>(&m_reg, target_state);
 }
 
 void TaTaCon::Reset()
 {
+  EncryptedExtension::Reset();
+
   m_reg = {};
   m_reg.identifier = tatacon_id;
 
@@ -80,7 +90,7 @@ ControllerEmu::ControlGroup* TaTaCon::GetGroup(TaTaConGroup group)
   case TaTaConGroup::Rim:
     return m_rim;
   default:
-    assert(false);
+    ASSERT(false);
     return nullptr;
   }
 }

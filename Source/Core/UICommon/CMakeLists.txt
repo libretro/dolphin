@@ -23,15 +23,13 @@ add_library(uicommon
   UICommon.h
   USBUtils.cpp
   USBUtils.h
-  VideoUtils.cpp
-  VideoUtils.h
 )
 
 target_link_libraries(uicommon
 PUBLIC
   common
   cpp-optparse
-  minizip
+  minizip::minizip
   pugixml
 
 PRIVATE
@@ -50,8 +48,8 @@ if(ENABLE_X11 AND X11_FOUND)
   target_link_libraries(uicommon PUBLIC ${XRANDR_LIBRARIES})
 endif()
 
-if(LIBUSB_FOUND)
-  target_link_libraries(uicommon PRIVATE ${LIBUSB_LIBRARIES})
+if(TARGET LibUSB::LibUSB)
+  target_link_libraries(uicommon PRIVATE LibUSB::LibUSB)
 endif()
 
 if(ENABLE_LLVM)
@@ -67,4 +65,9 @@ endif()
 if(USE_DISCORD_PRESENCE)
   target_compile_definitions(uicommon PRIVATE -DUSE_DISCORD_PRESENCE)
   target_link_libraries(uicommon PRIVATE discord-rpc)
+endif()
+
+if(MSVC)
+  # Add precompiled header
+  target_link_libraries(uicommon PRIVATE use_pch)
 endif()

@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -10,18 +9,6 @@
 #include "Common/BitUtils.h"
 #include "Common/CommonTypes.h"
 
-#ifdef _MSC_VER
-
-// MSVC needs a workaround, because its std::numeric_limits<double>::signaling_NaN()
-// will use __builtin_nans, which is improperly handled by the compiler and generates
-// a bad constant. Here we go back to the version MSVC used before the builtin.
-// TODO: Remove this and use numeric_limits directly whenever this bug is fixed.
-// See Visual Studio bug # 128935 "std::numeric_limits<float>::signaling_NaN() is broken"
-
-#include <ymath.h>
-
-#endif  // _MSC_VER
-
 namespace Common
 {
 template <typename T>
@@ -30,40 +17,17 @@ constexpr T SNANConstant()
   return std::numeric_limits<T>::signaling_NaN();
 }
 
-#ifdef _MSC_VER
-
-// See workaround note above.
-
-template <>
-constexpr double SNANConstant()
-{
-  return (_CSTD _Snan._Double);
-}
-template <>
-constexpr float SNANConstant()
-{
-  return (_CSTD _Snan._Float);
-}
-
-#endif  // _MSC_VER
-
 // The most significant bit of the fraction is an is-quiet bit on all architectures we care about.
-enum : u64
-{
-  DOUBLE_SIGN = 0x8000000000000000ULL,
-  DOUBLE_EXP = 0x7FF0000000000000ULL,
-  DOUBLE_FRAC = 0x000FFFFFFFFFFFFFULL,
-  DOUBLE_ZERO = 0x0000000000000000ULL,
-  DOUBLE_QBIT = 0x0008000000000000ULL
-};
+static constexpr u64 DOUBLE_QBIT = 0x0008000000000000ULL;
+static constexpr u64 DOUBLE_SIGN = 0x8000000000000000ULL;
+static constexpr u64 DOUBLE_EXP = 0x7FF0000000000000ULL;
+static constexpr u64 DOUBLE_FRAC = 0x000FFFFFFFFFFFFFULL;
+static constexpr u64 DOUBLE_ZERO = 0x0000000000000000ULL;
 
-enum : u32
-{
-  FLOAT_SIGN = 0x80000000,
-  FLOAT_EXP = 0x7F800000,
-  FLOAT_FRAC = 0x007FFFFF,
-  FLOAT_ZERO = 0x00000000
-};
+static constexpr u32 FLOAT_SIGN = 0x80000000;
+static constexpr u32 FLOAT_EXP = 0x7F800000;
+static constexpr u32 FLOAT_FRAC = 0x007FFFFF;
+static constexpr u32 FLOAT_ZERO = 0x00000000;
 
 inline bool IsQNAN(double d)
 {
@@ -116,7 +80,6 @@ enum PPCFpClass
 // Uses PowerPC conventions for the return value, so it can be easily
 // used directly in CPU emulation.
 u32 ClassifyDouble(double dvalue);
-// More efficient float version.
 u32 ClassifyFloat(float fvalue);
 
 struct BaseAndDec

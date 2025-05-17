@@ -1,33 +1,37 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerEmu/ControlGroup/IMUAccelerometer.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "Common/Common.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
-#include "InputCommon/ControlReference/ControlReference.h"
 #include "InputCommon/ControllerEmu/Control/Control.h"
-#include "InputCommon/ControllerEmu/Control/Input.h"
 
 namespace ControllerEmu
 {
 IMUAccelerometer::IMUAccelerometer(std::string name_, std::string ui_name_)
     : ControlGroup(std::move(name_), std::move(ui_name_), GroupType::IMUAccelerometer)
 {
-  AddInput(Translate, _trans("Up"));
-  AddInput(Translate, _trans("Down"));
-  AddInput(Translate, _trans("Left"));
-  AddInput(Translate, _trans("Right"));
-  AddInput(Translate, _trans("Forward"));
-  AddInput(Translate, _trans("Backward"));
+  AddInput(Translatability::Translate, _trans("Up"));
+  AddInput(Translatability::Translate, _trans("Down"));
+  AddInput(Translatability::Translate, _trans("Left"));
+  AddInput(Translatability::Translate, _trans("Right"));
+  AddInput(Translatability::Translate, _trans("Forward"));
+  AddInput(Translatability::Translate, _trans("Backward"));
+}
+
+bool IMUAccelerometer::AreInputsBound() const
+{
+  return std::all_of(controls.begin(), controls.end(),
+                     [](const auto& control) { return control->control_ref->BoundCount() > 0; });
 }
 
 std::optional<IMUAccelerometer::StateData> IMUAccelerometer::GetState() const
 {
-  if (controls[0]->control_ref->BoundCount() == 0)
+  if (!AreInputsBound())
     return std::nullopt;
 
   StateData state;

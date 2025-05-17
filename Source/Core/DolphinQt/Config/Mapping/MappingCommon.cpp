@@ -1,57 +1,34 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/Mapping/MappingCommon.h"
 
-#include <tuple>
+#include <chrono>
 
 #include <QApplication>
 #include <QPushButton>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QString>
 #include <QTimer>
 
 #include "DolphinQt/QtUtils/BlockUserInputFilter.h"
 #include "InputCommon/ControlReference/ControlReference.h"
-#include "InputCommon/ControllerInterface/Device.h"
+#include "InputCommon/ControllerInterface/MappingCommon.h"
 
 #include "Common/Thread.h"
 
 namespace MappingCommon
 {
-constexpr int INPUT_DETECT_TIME = 3000;
-constexpr int OUTPUT_TEST_TIME = 2000;
+constexpr auto INPUT_DETECT_INITIAL_TIME = std::chrono::seconds(3);
+constexpr auto INPUT_DETECT_CONFIRMATION_TIME = std::chrono::milliseconds(0);
+constexpr auto INPUT_DETECT_MAXIMUM_TIME = std::chrono::seconds(5);
 
-QString GetExpressionForControl(const QString& control_name,
-                                const ciface::Core::DeviceQualifier& control_device,
-                                const ciface::Core::DeviceQualifier& default_device, Quote quote)
-{
-  QString expr;
-
-  // non-default device
-  if (control_device != default_device)
-  {
-    expr += QString::fromStdString(control_device.ToString());
-    expr += QLatin1Char{':'};
-  }
-
-  // append the control name
-  expr += control_name;
-
-  if (quote == Quote::On)
-  {
-    QRegExp reg(QStringLiteral("[a-zA-Z]+"));
-    if (!reg.exactMatch(expr))
-      expr = QStringLiteral("`%1`").arg(expr);
-  }
-
-  return expr;
-}
+constexpr auto OUTPUT_TEST_TIME = std::chrono::seconds(2);
 
 QString DetectExpression(QPushButton* button, ciface::Core::DeviceContainer& device_container,
                          const std::vector<std::string>& device_strings,
-                         const ciface::Core::DeviceQualifier& default_device, Quote quote)
+                         const ciface::Core::DeviceQualifier& default_device,
+                         ciface::MappingCommon::Quote quote)
 {
   const auto filter = new BlockUserInputFilter(button);
 
@@ -68,9 +45,15 @@ QString DetectExpression(QPushButton* button, ciface::Core::DeviceContainer& dev
   // Avoid that the button press itself is registered as an event
   Common::SleepCurrentThread(50);
 
-  const auto [device, input] = device_container.DetectInput(INPUT_DETECT_TIME, device_strings);
+  auto detections =
+      device_container.DetectInput(device_strings, INPUT_DETECT_INITIAL_TIME,
+                                   INPUT_DETECT_CONFIRMATION_TIME, INPUT_DETECT_MAXIMUM_TIME);
+
+  ciface::MappingCommon::RemoveSpuriousTriggerCombinations(&detections);
 
   const auto timer = new QTimer(button);
+
+  timer->setSingleShot(true);
 
   button->connect(timer, &QTimer::timeout, [button, filter] {
     button->releaseMouse();
@@ -83,14 +66,7 @@ QString DetectExpression(QPushButton* button, ciface::Core::DeviceContainer& dev
 
   button->setText(old_text);
 
-  if (!input)
-    return {};
-
-  ciface::Core::DeviceQualifier device_qualifier;
-  device_qualifier.FromDevice(device.get());
-
-  return MappingCommon::GetExpressionForControl(QString::fromStdString(input->GetName()),
-                                                device_qualifier, default_device, quote);
+  return QString::fromStdString(BuildExpression(detections, default_device, quote));
 }
 
 void TestOutput(QPushButton* button, OutputReference* reference)
@@ -102,7 +78,7 @@ void TestOutput(QPushButton* button, OutputReference* reference)
   QApplication::processEvents();
 
   reference->State(1.0);
-  Common::SleepCurrentThread(OUTPUT_TEST_TIME);
+  std::this_thread::sleep_for(OUTPUT_TEST_TIME);
   reference->State(0.0);
 
   button->setText(old_text);

@@ -1,8 +1,9 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
+
+#include <type_traits>
 
 #include "Common/Align.h"
 #include "Common/CommonTypes.h"
@@ -10,7 +11,11 @@
 #include "Core/PowerPC/MMU.h"
 #include "Core/PowerPC/PowerPC.h"
 
-#include <type_traits>
+namespace Core
+{
+class CPUThreadGuard;
+class System;
+}  // namespace Core
 
 namespace HLE::SystemVABI
 {
@@ -33,8 +38,10 @@ constexpr bool IS_ARG_REAL = std::is_floating_point<T>();
 class VAList
 {
 public:
-  explicit VAList(u32 stack, u32 gpr = 3, u32 fpr = 1, u32 gpr_max = 10, u32 fpr_max = 8)
-      : m_gpr(gpr), m_fpr(fpr), m_gpr_max(gpr_max), m_fpr_max(fpr_max), m_stack(stack)
+  explicit VAList(const Core::CPUThreadGuard& guard, u32 stack, u32 gpr = 3, u32 fpr = 1,
+                  u32 gpr_max = 10, u32 fpr_max = 8)
+      : m_guard(guard), m_gpr(gpr), m_fpr(fpr), m_gpr_max(gpr_max), m_fpr_max(fpr_max),
+        m_stack(stack)
   {
   }
   virtual ~VAList();
@@ -48,7 +55,7 @@ public:
 
     for (size_t i = 0; i < sizeof(T); i += 1, addr += 1)
     {
-      reinterpret_cast<u8*>(&obj)[i] = PowerPC::HostRead_U8(addr);
+      reinterpret_cast<u8*>(&obj)[i] = PowerPC::MMU::HostRead_U8(m_guard, addr);
     }
 
     return obj;
@@ -69,7 +76,7 @@ public:
     else
     {
       m_stack = Common::AlignUp(m_stack, 4);
-      value = PowerPC::HostRead_U32(m_stack);
+      value = PowerPC::MMU::HostRead_U32(m_guard, m_stack);
       m_stack += 4;
     }
 
@@ -92,7 +99,7 @@ public:
     else
     {
       m_stack = Common::AlignUp(m_stack, 8);
-      value = PowerPC::HostRead_U64(m_stack);
+      value = PowerPC::MMU::HostRead_U64(m_guard, m_stack);
       m_stack += 8;
     }
 
@@ -113,7 +120,7 @@ public:
     else
     {
       m_stack = Common::AlignUp(m_stack, 8);
-      value = PowerPC::HostRead_F64(m_stack);
+      value = PowerPC::MMU::HostRead_F64(m_guard, m_stack);
       m_stack += 8;
     }
 
@@ -128,6 +135,7 @@ public:
   }
 
 protected:
+  const Core::CPUThreadGuard& m_guard;
   u32 m_gpr = 3;
   u32 m_fpr = 1;
   const u32 m_gpr_max = 10;
@@ -148,7 +156,7 @@ private:
 class VAListStruct : public VAList
 {
 public:
-  explicit VAListStruct(u32 address);
+  explicit VAListStruct(const Core::CPUThreadGuard& guard, u32 address);
   ~VAListStruct() = default;
 
 private:

@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 
@@ -12,10 +11,14 @@
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
+#include "Common/Config/Config.h"
 #include "Common/FileUtil.h"
 #include "Common/IniFile.h"
 #include "Common/Swap.h"
 #include "Common/Thread.h"
+
+#include "Core/Config/MainSettings.h"
+#include "Core/Config/WiimoteSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/Wiimote.h"
@@ -24,9 +27,9 @@
 #include "Core/HW/WiimoteReal/IOAndroid.h"
 #include "Core/HW/WiimoteReal/IOLinux.h"
 #include "Core/HW/WiimoteReal/IOWin.h"
-#include "Core/HW/WiimoteReal/IOdarwin.h"
 #include "Core/HW/WiimoteReal/IOhidapi.h"
-#include "InputCommon/ControllerInterface/Wiimote/Wiimote.h"
+
+#include "InputCommon/ControllerInterface/Wiimote/WiimoteController.h"
 #include "InputCommon/InputConfig.h"
 
 #include "SFML/Network.hpp"
@@ -39,7 +42,7 @@ static void TryToConnectBalanceBoard(std::unique_ptr<Wiimote>);
 static bool TryToConnectWiimoteToSlot(std::unique_ptr<Wiimote>&, unsigned int);
 static void HandleWiimoteDisconnect(int index);
 
-static bool g_real_wiimotes_initialized = false;
+static bool s_real_wiimotes_initialized = false;
 
 // This is used to store connected Wiimotes' IDs, so we don't connect
 // more than once to the same device.
@@ -49,6 +52,7 @@ static std::mutex s_known_ids_mutex;
 std::recursive_mutex g_wiimotes_mutex;
 
 // Real wii remotes assigned to a particular slot.
+// Assignments must be done from the CPU thread with the above mutex held.
 std::unique_ptr<Wiimote> g_wiimotes[MAX_BBMOTES];
 
 struct WiimotePoolEntry
@@ -78,13 +82,16 @@ static void TryToFillWiimoteSlot(u32 index)
 {
   std::lock_guard lk(g_wiimotes_mutex);
 
-  if (g_wiimotes[index] || WiimoteCommon::GetSource(index) != WiimoteSource::Real)
+  if (g_wiimotes[index] ||
+      Config::Get(Config::GetInfoForWiimoteSource(index)) != WiimoteSource::Real)
+  {
     return;
+  }
 
   // If the pool is empty, attempt to steal from ControllerInterface.
   if (s_wiimote_pool.empty())
   {
-    ciface::Wiimote::ReleaseDevices(1);
+    ciface::WiimoteController::ReleaseDevices(1);
 
     // Still empty?
     if (s_wiimote_pool.empty())
@@ -95,8 +102,15 @@ static void TryToFillWiimoteSlot(u32 index)
     s_wiimote_pool.erase(s_wiimote_pool.begin());
 }
 
+void PopulateDevices()
+{
+  // There is a very small chance of deadlocks if we didn't do it in another thread
+  s_wiimote_scanner.PopulateDevices();
+}
+
 // Attempts to fill enabled real wiimote slots.
 // Push/pull wiimotes to/from ControllerInterface as needed.
+// Should be called PopulateDevices() to be in line with other implementations.
 void ProcessWiimotePool()
 {
   std::lock_guard lk(g_wiimotes_mutex);
@@ -104,17 +118,22 @@ void ProcessWiimotePool()
   for (u32 index = 0; index != MAX_WIIMOTES; ++index)
     TryToFillWiimoteSlot(index);
 
-  if (SConfig::GetInstance().connect_wiimotes_for_ciface)
+  if (Config::Get(Config::MAIN_CONNECT_WIIMOTES_FOR_CONTROLLER_INTERFACE))
   {
     for (auto& entry : s_wiimote_pool)
-      ciface::Wiimote::AddDevice(std::move(entry.wiimote));
+      ciface::WiimoteController::AddDevice(std::move(entry.wiimote));
 
     s_wiimote_pool.clear();
   }
   else
   {
-    ciface::Wiimote::ReleaseDevices();
+    ciface::WiimoteController::ReleaseDevices();
   }
+}
+
+bool IsScannerReady()
+{
+  return s_wiimote_scanner.IsReady();
 }
 
 void AddWiimoteToPool(std::unique_ptr<Wiimote> wiimote)
@@ -125,26 +144,37 @@ void AddWiimoteToPool(std::unique_ptr<Wiimote> wiimote)
 
   if (!wiimote->Connect(POOL_WIIMOTE_INDEX))
   {
-    ERROR_LOG(WIIMOTE, "Failed to connect real wiimote.");
+    ERROR_LOG_FMT(WIIMOTE, "Failed to connect real wiimote.");
     return;
   }
+
+  wiimote->EmuStop();
 
   std::lock_guard lk(g_wiimotes_mutex);
   s_wiimote_pool.emplace_back(WiimotePoolEntry{std::move(wiimote)});
 }
 
-Wiimote::Wiimote() = default;
+Wiimote::Wiimote()
+{
+  m_config_changed_callback_id = Config::AddConfigChangedCallback([this] { RefreshConfig(); });
+  RefreshConfig();
+}
+
+Wiimote::~Wiimote()
+{
+  Config::RemoveConfigChangedCallback(m_config_changed_callback_id);
+}
 
 void Wiimote::Shutdown()
 {
-  std::lock_guard<std::mutex> lk(s_known_ids_mutex);
+  std::lock_guard lk(s_known_ids_mutex);
   s_known_ids.erase(GetId());
 
   StopThread();
   ClearReadQueue();
   m_write_reports.Clear();
 
-  NOTICE_LOG(WIIMOTE, "Disconnected real wiimote.");
+  NOTICE_LOG_FMT(WIIMOTE, "Disconnected real wiimote.");
 }
 
 // to be called from CPU thread
@@ -168,12 +198,6 @@ void Wiimote::WriteReport(Report rpt)
 
     case OutputReportID::SpeakerMute:
       m_speaker_mute = (rpt[2] & 0x4) != 0;
-      break;
-
-    case OutputReportID::ReportMode:
-      // Force non-continuous reporting for less BT traffic.
-      // We duplicate reports to maintain 200hz anyways.
-      rpt[2] &= ~0x4;
       break;
 
     default:
@@ -221,54 +245,32 @@ void Wiimote::ClearReadQueue()
   }
 }
 
-void Wiimote::ControlChannel(const u16 channel, const void* const data, const u32 size)
+void Wiimote::EventLinked()
 {
-  // Check for custom communication
-  if (channel == ::Wiimote::DOLPHIN_DISCONNET_CONTROL_CHANNEL)
-  {
-    if (m_really_disconnect)
-    {
-      DisconnectInternal();
-    }
-    else
-    {
-      EmuStop();
-    }
-  }
-  else
-  {
-    InterruptChannel(channel, data, size);
-    const auto& hidp = *static_cast<const HIDPacket*>(data);
-    if (hidp.type == HID_TYPE_SET_REPORT)
-    {
-      u8 handshake = HID_HANDSHAKE_SUCCESS;
-      Core::Callback_WiimoteInterruptChannel(m_index, channel, &handshake, sizeof(handshake));
-    }
-  }
+  m_is_linked = true;
+
+  ClearReadQueue();
+  ResetDataReporting();
+  EnablePowerAssertionInternal();
 }
 
-void Wiimote::InterruptChannel(const u16 channel, const void* const data, const u32 size)
+void Wiimote::EventUnlinked()
 {
-  // first interrupt/control channel sent
-  if (channel != m_channel)
-  {
-    m_channel = channel;
+  if (m_really_disconnect)
+    DisconnectInternal();
+  else
+    EmuStop();
+}
 
-    ClearReadQueue();
-
-    EmuStart();
-  }
-
-  auto const report_data = static_cast<const u8*>(data);
-  Report rpt(report_data, report_data + size);
+void Wiimote::InterruptDataOutput(const u8* data, const u32 size)
+{
+  Report rpt(size + REPORT_HID_HEADER_SIZE);
+  std::copy_n(data, size, rpt.data() + REPORT_HID_HEADER_SIZE);
 
   // Convert output DATA packets to SET_REPORT packets.
   // Nintendo Wiimotes work without this translation, but 3rd
   // party ones don't.
-  if (rpt[0] == 0xa2)
-  {
-    rpt[0] = WR_SET_REPORT | BT_OUTPUT;
-  }
+  rpt[0] = WR_SET_REPORT | BT_OUTPUT;
 
   // Disallow games from turning off all of the LEDs.
   // It makes Wiimote connection status confusing.
@@ -282,7 +284,7 @@ void Wiimote::InterruptChannel(const u16 channel, const void* const data, const 
     }
   }
   else if (rpt[1] == u8(OutputReportID::SpeakerData) &&
-           (!SConfig::GetInstance().m_WiimoteEnableSpeaker || !m_speaker_enable || m_speaker_mute))
+           (!m_speaker_enabled_in_dolphin_config || !m_speaker_enable || m_speaker_mute))
   {
     rpt.resize(3);
     // Translate undesired speaker data reports into rumble reports.
@@ -299,23 +301,30 @@ void Wiimote::Read()
   Report rpt(MAX_PAYLOAD);
   auto const result = IORead(rpt.data());
 
-  if (result > 0 && m_channel > 0)
+  if (0 == result)
   {
-    if (SConfig::GetInstance().iBBDumpPort > 0 && m_index == WIIMOTE_BALANCE_BOARD)
+    ERROR_LOG_FMT(WIIMOTE, "Wiimote::IORead failed. Disconnecting Wii Remote {}.", m_index + 1);
+    DisconnectInternal();
+
+    return;
+  }
+
+  // Drop the report if not connected.
+  if (!m_is_linked)
+    return;
+
+  if (result > 0)
+  {
+    if (m_balance_board_dump_port > 0 && m_index == WIIMOTE_BALANCE_BOARD)
     {
       static sf::UdpSocket Socket;
       Socket.send((char*)rpt.data(), rpt.size(), sf::IpAddress::LocalHost,
-                  SConfig::GetInstance().iBBDumpPort);
+                  m_balance_board_dump_port);
     }
 
     // Add it to queue
     rpt.resize(result);
     m_read_reports.Push(std::move(rpt));
-  }
-  else if (0 == result)
-  {
-    ERROR_LOG(WIIMOTE, "Wiimote::IORead failed. Disconnecting Wii Remote %d.", m_index + 1);
-    DisconnectInternal();
   }
 }
 
@@ -327,11 +336,10 @@ bool Wiimote::Write()
 
   Report const& rpt = m_write_reports.Front();
 
-  if (SConfig::GetInstance().iBBDumpPort > 0 && m_index == WIIMOTE_BALANCE_BOARD)
+  if (m_balance_board_dump_port > 0 && m_index == WIIMOTE_BALANCE_BOARD)
   {
     static sf::UdpSocket Socket;
-    Socket.send((char*)rpt.data(), rpt.size(), sf::IpAddress::LocalHost,
-                SConfig::GetInstance().iBBDumpPort);
+    Socket.send((char*)rpt.data(), rpt.size(), sf::IpAddress::LocalHost, m_balance_board_dump_port);
   }
   int ret = IOWrite(rpt.data(), rpt.size());
 
@@ -358,7 +366,7 @@ bool Wiimote::IsBalanceBoard()
   if (!IOWrite(init_extension_rpt1, sizeof(init_extension_rpt1)) ||
       !IOWrite(init_extension_rpt2, sizeof(init_extension_rpt2)))
   {
-    ERROR_LOG(WIIMOTE, "IsBalanceBoard(): Failed to initialise extension.");
+    ERROR_LOG_FMT(WIIMOTE, "IsBalanceBoard(): Failed to initialise extension.");
     return false;
   }
 
@@ -395,8 +403,8 @@ bool Wiimote::IsBalanceBoard()
       const auto* reply = reinterpret_cast<InputReportReadDataReply*>(&buf[2]);
       if (Common::swap16(reply->address) != 0x00fe)
       {
-        ERROR_LOG(WIIMOTE, "IsBalanceBoard(): Received unexpected data reply for address %X",
-                  Common::swap16(reply->address));
+        ERROR_LOG_FMT(WIIMOTE, "IsBalanceBoard(): Received unexpected data reply for address {:X}",
+                      Common::swap16(reply->address));
         return false;
       }
       // A Balance Board ext can be identified by checking for 0x0402.
@@ -407,7 +415,8 @@ bool Wiimote::IsBalanceBoard()
       const auto* ack = reinterpret_cast<InputReportAck*>(&buf[2]);
       if (ack->rpt_id == OutputReportID::ReadData && ack->error_code != ErrorCode::Success)
       {
-        WARN_LOG(WIIMOTE, "Failed to read from 0xa400fe, assuming Wiimote is not a Balance Board.");
+        WARN_LOG_FMT(WIIMOTE,
+                     "Failed to read from 0xa400fe, assuming Wiimote is not a Balance Board.");
         return false;
       }
     }
@@ -429,52 +438,66 @@ bool Wiimote::GetNextReport(Report* report)
 }
 
 // Returns the next report that should be sent
-Report& Wiimote::ProcessReadQueue()
+Report& Wiimote::ProcessReadQueue(bool repeat_last_data_report)
 {
-  // Pop through the queued reports
-  while (GetNextReport(&m_last_input_report))
-  {
-    if (!IsDataReport(m_last_input_report))
-    {
-      // A non-data report, use it.
-      return m_last_input_report;
-
-      // Forget the last data report as it may be of the wrong type
-      // or contain outdated button data
-      // or it's not supposed to be sent at this time
-      // It's just easier to be correct this way and it's probably not horrible.
-    }
-  }
-
-  // If the last report wasn't a data report it's irrelevant.
-  if (!IsDataReport(m_last_input_report))
+  // If we're not repeating data reports or had a non-data report, any old report is irrelevant.
+  if (!repeat_last_data_report || !IsDataReport(m_last_input_report))
     m_last_input_report.clear();
 
-  // If it was a data report, we repeat that until something else comes in.
+  // Step through the read queue.
+  while (GetNextReport(&m_last_input_report))
+  {
+    // Stop on a non-data report.
+    if (!IsDataReport(m_last_input_report))
+      break;
+  }
+
   return m_last_input_report;
 }
 
-void Wiimote::Update()
+u8 Wiimote::GetWiimoteDeviceIndex() const
 {
-  if (!IsConnected())
-  {
-    HandleWiimoteDisconnect(m_index);
-    return;
-  }
-
-  // Pop through the queued reports
-  const Report& rpt = ProcessReadQueue();
-
-  // Send the report
-  if (!rpt.empty() && m_channel > 0)
-  {
-    Core::Callback_WiimoteInterruptChannel(m_index, m_channel, rpt.data(), (u32)rpt.size());
-  }
+  return m_bt_device_index;
 }
 
-bool Wiimote::CheckForButtonPress()
+void Wiimote::SetWiimoteDeviceIndex(u8 index)
 {
-  Report& rpt = ProcessReadQueue();
+  m_bt_device_index = index;
+}
+
+void Wiimote::PrepareInput(WiimoteEmu::DesiredWiimoteState* target_state)
+{
+  // Nothing to do here on real Wiimotes.
+}
+
+void Wiimote::Update(const WiimoteEmu::DesiredWiimoteState& target_state)
+{
+  // Wii remotes send input at 200hz once a Wii enables "sniff mode" on the connection.
+  // PC bluetooth stacks do not enable sniff mode causing remotes to send input at only 100hz.
+  //
+  // Commercial games do not send speaker data unless input rates approach 200hz.
+  // Some games will also present input issues.
+  // e.g. Super Mario Galaxy's star cursor drops in and out.
+  //
+  // If we want speaker data we must pretend input is at 200hz.
+  // We duplicate data reports to accomplish this.
+  // Unfortunately this breaks detection of motion gestures in some games.
+  // e.g. Sonic and the Secret Rings, Jett Rocket
+  const bool repeat_reports_to_maintain_200hz =
+      Config::Get(Config::MAIN_REAL_WII_REMOTE_REPEAT_REPORTS);
+
+  const Report& rpt = ProcessReadQueue(repeat_reports_to_maintain_200hz);
+
+  if (rpt.empty())
+    return;
+
+  InterruptCallback(rpt.front(), rpt.data() + REPORT_HID_HEADER_SIZE,
+                    u32(rpt.size() - REPORT_HID_HEADER_SIZE));
+}
+
+ButtonData Wiimote::GetCurrentlyPressedButtons()
+{
+  Report& rpt = m_last_input_report;
   if (rpt.size() >= 4)
   {
     const auto mode = InputReportID(rpt[1]);
@@ -486,10 +509,10 @@ bool Wiimote::CheckForButtonPress()
       ButtonData buttons = {};
       builder->GetCoreData(&buttons);
 
-      return buttons.hex != 0;
+      return buttons;
     }
   }
-  return false;
+  return ButtonData{};
 }
 
 void Wiimote::Prepare()
@@ -512,23 +535,16 @@ bool Wiimote::PrepareOnThread()
          (Common::SleepCurrentThread(200), IOWrite(req_status_report, sizeof(req_status_report)));
 }
 
-void Wiimote::EmuStart()
-{
-  ResetDataReporting();
-  EnablePowerAssertionInternal();
-}
-
 void Wiimote::EmuStop()
 {
-  m_channel = 0;
+  m_is_linked = false;
+
   ResetDataReporting();
   DisablePowerAssertionInternal();
 }
 
 void Wiimote::EmuResume()
 {
-  m_last_input_report.clear();
-
   EnablePowerAssertionInternal();
 }
 
@@ -542,9 +558,11 @@ static unsigned int CalculateWantedWiimotes()
   std::lock_guard lk(g_wiimotes_mutex);
   // Figure out how many real Wiimotes are required
   unsigned int wanted_wiimotes = 0;
-  for (unsigned int i = 0; i < MAX_WIIMOTES; ++i)
-    if (WiimoteCommon::GetSource(i) == WiimoteSource::Real && !g_wiimotes[i])
+  for (int i = 0; i < MAX_WIIMOTES; ++i)
+  {
+    if (Config::Get(Config::GetInfoForWiimoteSource(i)) == WiimoteSource::Real && !g_wiimotes[i])
       ++wanted_wiimotes;
+  }
   return wanted_wiimotes;
 }
 
@@ -552,9 +570,11 @@ static unsigned int CalculateWantedBB()
 {
   std::lock_guard lk(g_wiimotes_mutex);
   unsigned int wanted_bb = 0;
-  if (WiimoteCommon::GetSource(WIIMOTE_BALANCE_BOARD) == WiimoteSource::Real &&
+  if (Config::Get(Config::WIIMOTE_BB_SOURCE) == WiimoteSource::Real &&
       !g_wiimotes[WIIMOTE_BALANCE_BOARD])
+  {
     ++wanted_bb;
+  }
   return wanted_bb;
 }
 
@@ -568,9 +588,16 @@ void WiimoteScanner::StartThread()
 
 void WiimoteScanner::StopThread()
 {
-  if (m_scan_thread_running.TestAndClear())
+  if (m_scan_thread_running.IsSet())
   {
     SetScanMode(WiimoteScanMode::DO_NOT_SCAN);
+
+    for (const auto& backend : m_backends)
+    {
+      backend->RequestStopSearching();
+    }
+
+    m_scan_thread_running.Clear();
     m_scan_thread.join();
   }
 }
@@ -578,12 +605,12 @@ void WiimoteScanner::StopThread()
 void WiimoteScanner::SetScanMode(WiimoteScanMode scan_mode)
 {
   m_scan_mode.store(scan_mode);
-  m_scan_mode_changed_event.Set();
+  m_scan_mode_changed_or_population_event.Set();
 }
 
 bool WiimoteScanner::IsReady() const
 {
-  std::lock_guard<std::mutex> lg(m_backends_mutex);
+  std::lock_guard lg(m_backends_mutex);
   return std::any_of(m_backends.begin(), m_backends.end(),
                      [](const auto& backend) { return backend->IsReady(); });
 }
@@ -617,12 +644,12 @@ void WiimoteScanner::PoolThreadFunc()
     {
       if (!it->wiimote->IsConnected())
       {
-        INFO_LOG(WIIMOTE, "Removing disconnected wiimote pool entry.");
+        INFO_LOG_FMT(WIIMOTE, "Removing disconnected wiimote pool entry.");
         it = s_wiimote_pool.erase(it);
       }
       else if (it->IsExpired())
       {
-        INFO_LOG(WIIMOTE, "Removing expired wiimote pool entry.");
+        INFO_LOG_FMT(WIIMOTE, "Removing expired wiimote pool entry.");
         it = s_wiimote_pool.erase(it);
       }
       else
@@ -643,31 +670,41 @@ void WiimoteScanner::PoolThreadFunc()
   }
 }
 
+void WiimoteScanner::PopulateDevices()
+{
+  m_populate_devices.Set();
+  m_scan_mode_changed_or_population_event.Set();
+}
+
 void WiimoteScanner::ThreadFunc()
 {
   std::thread pool_thread(&WiimoteScanner::PoolThreadFunc, this);
 
   Common::SetCurrentThreadName("Wiimote Scanning Thread");
 
-  NOTICE_LOG(WIIMOTE, "Wiimote scanning thread has started.");
+  NOTICE_LOG_FMT(WIIMOTE, "Wiimote scanning thread has started.");
 
   // Create and destroy scanner backends here to ensure all operations stay on the same thread. The
   // HIDAPI backend on macOS has an error condition when IOHIDManagerCreate and IOHIDManagerClose
   // are called on different threads (and so reference different CFRunLoops) which can cause an
   // EXC_BAD_ACCES crash.
   {
-    std::lock_guard<std::mutex> lg(m_backends_mutex);
+    std::lock_guard lg(m_backends_mutex);
 
     m_backends.emplace_back(std::make_unique<WiimoteScannerLinux>());
     m_backends.emplace_back(std::make_unique<WiimoteScannerAndroid>());
     m_backends.emplace_back(std::make_unique<WiimoteScannerWindows>());
-    m_backends.emplace_back(std::make_unique<WiimoteScannerDarwin>());
     m_backends.emplace_back(std::make_unique<WiimoteScannerHidapi>());
   }
 
   while (m_scan_thread_running.IsSet())
   {
-    m_scan_mode_changed_event.WaitFor(std::chrono::milliseconds(500));
+    m_scan_mode_changed_or_population_event.WaitFor(std::chrono::milliseconds(500));
+
+    if (m_populate_devices.TestAndClear())
+    {
+      g_controller_interface.PlatformPopulateDevices([] { ProcessWiimotePool(); });
+    }
 
     // Does stuff needed to detect disconnects on Windows
     for (const auto& backend : m_backends)
@@ -679,11 +716,11 @@ void WiimoteScanner::ThreadFunc()
       continue;
 
     // If we don't want Wiimotes in ControllerInterface, we may not need them at all.
-    if (!SConfig::GetInstance().connect_wiimotes_for_ciface)
+    if (!Config::Get(Config::MAIN_CONNECT_WIIMOTES_FOR_CONTROLLER_INTERFACE))
     {
       // We don't want any remotes in passthrough mode or running in GC mode.
       const bool core_running = Core::GetState() != Core::State::Uninitialized;
-      if (SConfig::GetInstance().m_bt_passthrough_enabled ||
+      if (Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED) ||
           (core_running && !SConfig::GetInstance().bWii))
         continue;
 
@@ -703,18 +740,18 @@ void WiimoteScanner::ThreadFunc()
         for (auto* wiimote : found_wiimotes)
         {
           {
-            std::lock_guard<std::mutex> lk(s_known_ids_mutex);
+            std::lock_guard lk(s_known_ids_mutex);
             s_known_ids.insert(wiimote->GetId());
           }
 
           AddWiimoteToPool(std::unique_ptr<Wiimote>(wiimote));
-          ProcessWiimotePool();
+          g_controller_interface.PlatformPopulateDevices([] { ProcessWiimotePool(); });
         }
 
         if (found_board)
         {
           {
-            std::lock_guard<std::mutex> lk(s_known_ids_mutex);
+            std::lock_guard lk(s_known_ids_mutex);
             s_known_ids.insert(found_board->GetId());
           }
 
@@ -729,13 +766,13 @@ void WiimoteScanner::ThreadFunc()
   }
 
   {
-    std::lock_guard<std::mutex> lg(m_backends_mutex);
+    std::lock_guard lg(m_backends_mutex);
     m_backends.clear();
   }
 
   pool_thread.join();
 
-  NOTICE_LOG(WIIMOTE, "Wiimote scanning thread has stopped.");
+  NOTICE_LOG_FMT(WIIMOTE, "Wiimote scanning thread has stopped.");
 }
 
 bool Wiimote::Connect(int index)
@@ -791,13 +828,13 @@ void Wiimote::ThreadFunc()
   {
     if (m_need_prepare.TestAndClear() && !PrepareOnThread())
     {
-      ERROR_LOG(WIIMOTE, "Wiimote::PrepareOnThread failed.  Disconnecting Wiimote %d.",
-                m_index + 1);
+      ERROR_LOG_FMT(WIIMOTE, "Wiimote::PrepareOnThread failed.  Disconnecting Wiimote {}.",
+                    m_index + 1);
       break;
     }
     if (!Write())
     {
-      ERROR_LOG(WIIMOTE, "Wiimote::Write failed.  Disconnecting Wiimote %d.", m_index + 1);
+      ERROR_LOG_FMT(WIIMOTE, "Wiimote::Write failed.  Disconnecting Wiimote {}.", m_index + 1);
       break;
     }
     Read();
@@ -806,51 +843,26 @@ void Wiimote::ThreadFunc()
   DisconnectInternal();
 }
 
+void Wiimote::RefreshConfig()
+{
+  m_speaker_enabled_in_dolphin_config = Config::Get(Config::MAIN_WIIMOTE_ENABLE_SPEAKER);
+  m_balance_board_dump_port = Config::Get(Config::MAIN_BB_DUMP_PORT);
+}
+
 int Wiimote::GetIndex() const
 {
   return m_index;
 }
 
-void Wiimote::SetChannel(u16 channel)
-{
-  m_channel = channel;
-}
-
-void LoadSettings()
-{
-  std::string ini_filename = File::GetUserPath(D_CONFIG_IDX) + WIIMOTE_INI_NAME ".ini";
-
-  IniFile inifile;
-  inifile.Load(ini_filename);
-
-  for (unsigned int i = 0; i < MAX_WIIMOTES; ++i)
-  {
-    std::string secname("Wiimote");
-    secname += static_cast<char>('1' + i);
-    IniFile::Section& sec = *inifile.GetOrCreateSection(secname);
-
-    unsigned int source = 0;
-    sec.Get("Source", &source, i ? int(WiimoteSource::None) : int(WiimoteSource::Emulated));
-    WiimoteCommon::SetSource(i, WiimoteSource(source));
-  }
-
-  std::string secname("BalanceBoard");
-  IniFile::Section& sec = *inifile.GetOrCreateSection(secname);
-
-  unsigned int bb_source = 0;
-  sec.Get("Source", &bb_source, int(WiimoteSource::None));
-  WiimoteCommon::SetSource(WIIMOTE_BALANCE_BOARD, WiimoteSource(bb_source));
-}
-
 // config dialog calls this when some settings change
 void Initialize(::Wiimote::InitializeMode init_mode)
 {
-  if (!g_real_wiimotes_initialized)
+  if (!s_real_wiimotes_initialized)
   {
     s_wiimote_scanner.StartThread();
   }
 
-  if (SConfig::GetInstance().m_WiimoteContinuousScanning)
+  if (Config::Get(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING))
     s_wiimote_scanner.SetScanMode(WiimoteScanMode::CONTINUOUSLY_SCAN);
   else
     s_wiimote_scanner.SetScanMode(WiimoteScanMode::DO_NOT_SCAN);
@@ -867,12 +879,12 @@ void Initialize(::Wiimote::InitializeMode init_mode)
     }
   }
 
-  if (g_real_wiimotes_initialized)
+  if (s_real_wiimotes_initialized)
     return;
 
-  NOTICE_LOG(WIIMOTE, "WiimoteReal::Initialize");
+  NOTICE_LOG_FMT(WIIMOTE, "WiimoteReal::Initialize");
 
-  g_real_wiimotes_initialized = true;
+  s_real_wiimotes_initialized = true;
 }
 
 // called on emulation shutdown
@@ -886,17 +898,17 @@ void Stop()
 // called when the Dolphin app exits
 void Shutdown()
 {
-  g_real_wiimotes_initialized = false;
+  s_real_wiimotes_initialized = false;
   s_wiimote_scanner.StopThread();
 
-  NOTICE_LOG(WIIMOTE, "WiimoteReal::Shutdown");
+  NOTICE_LOG_FMT(WIIMOTE, "WiimoteReal::Shutdown");
 
   std::lock_guard lk(g_wiimotes_mutex);
   for (unsigned int i = 0; i < MAX_BBMOTES; ++i)
     HandleWiimoteDisconnect(i);
 
   // Release remotes from ControllerInterface and empty the pool.
-  ciface::Wiimote::ReleaseDevices();
+  ciface::WiimoteController::ReleaseDevices();
   s_wiimote_pool.clear();
 }
 
@@ -917,12 +929,12 @@ void Pause()
 // Called from the Wiimote scanner thread (or UI thread on source change)
 static bool TryToConnectWiimoteToSlot(std::unique_ptr<Wiimote>& wm, unsigned int i)
 {
-  if (WiimoteCommon::GetSource(i) != WiimoteSource::Real || g_wiimotes[i])
+  if (Config::Get(Config::GetInfoForWiimoteSource(i)) != WiimoteSource::Real || g_wiimotes[i])
     return false;
 
   if (!wm->Connect(i))
   {
-    ERROR_LOG(WIIMOTE, "Failed to connect real wiimote.");
+    ERROR_LOG_FMT(WIIMOTE, "Failed to connect real wiimote.");
     return false;
   }
 
@@ -933,10 +945,12 @@ static bool TryToConnectWiimoteToSlot(std::unique_ptr<Wiimote>& wm, unsigned int
   led_report.leds = u8(1 << (i % WIIMOTE_BALANCE_BOARD));
   wm->QueueReport(led_report);
 
-  g_wiimotes[i] = std::move(wm);
-  Core::RunAsCPUThread([i] { ::Wiimote::Connect(i, true); });
+  Core::RunAsCPUThread([i, &wm] {
+    g_wiimotes[i] = std::move(wm);
+    WiimoteCommon::UpdateSource(i);
+  });
 
-  NOTICE_LOG(WIIMOTE, "Connected real wiimote to slot %i.", i + 1);
+  NOTICE_LOG_FMT(WIIMOTE, "Connected real wiimote to slot {}.", i + 1);
 
   return true;
 }
@@ -946,65 +960,24 @@ static void TryToConnectBalanceBoard(std::unique_ptr<Wiimote> wm)
   if (TryToConnectWiimoteToSlot(wm, WIIMOTE_BALANCE_BOARD))
     return;
 
-  NOTICE_LOG(WIIMOTE, "No open slot for real balance board.");
+  NOTICE_LOG_FMT(WIIMOTE, "No open slot for real balance board.");
 }
 
 static void HandleWiimoteDisconnect(int index)
 {
-  g_wiimotes[index] = nullptr;
+  Core::RunAsCPUThread([index] {
+    // The Wii Remote object must exist through the call to UpdateSource
+    // to prevent WiimoteDevice from having a dangling HIDWiimote pointer.
+    const auto temp_real_wiimote = std::move(g_wiimotes[index]);
+    WiimoteCommon::UpdateSource(index);
+  });
 }
 
 // This is called from the GUI thread
 void Refresh()
 {
-  if (!SConfig::GetInstance().m_WiimoteContinuousScanning)
+  if (!Config::Get(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING))
     s_wiimote_scanner.SetScanMode(WiimoteScanMode::SCAN_ONCE);
-}
-
-void InterruptChannel(int wiimote_number, u16 channel_id, const void* data, u32 size)
-{
-  std::lock_guard lk(g_wiimotes_mutex);
-  if (g_wiimotes[wiimote_number])
-    g_wiimotes[wiimote_number]->InterruptChannel(channel_id, data, size);
-}
-
-void ControlChannel(int wiimote_number, u16 channel_id, const void* data, u32 size)
-{
-  std::lock_guard lk(g_wiimotes_mutex);
-  if (g_wiimotes[wiimote_number])
-    g_wiimotes[wiimote_number]->ControlChannel(channel_id, data, size);
-}
-
-// Read the Wiimote once
-void Update(int wiimote_number)
-{
-  // Try to get a lock and return without doing anything if we fail
-  // This avoids blocking the CPU thread
-  if (!g_wiimotes_mutex.try_lock())
-    return;
-
-  if (g_wiimotes[wiimote_number])
-    g_wiimotes[wiimote_number]->Update();
-
-  g_wiimotes_mutex.unlock();
-
-  // Wiimote::Update() may remove the Wiimote if it was disconnected.
-  if (!g_wiimotes[wiimote_number])
-    ::Wiimote::Connect(wiimote_number, false);
-}
-
-bool CheckForButtonPress(int wiimote_number)
-{
-  if (!g_wiimotes_mutex.try_lock())
-    return false;
-
-  bool button_pressed = false;
-
-  if (g_wiimotes[wiimote_number])
-    button_pressed = g_wiimotes[wiimote_number]->CheckForButtonPress();
-
-  g_wiimotes_mutex.unlock();
-  return button_pressed;
 }
 
 bool IsValidDeviceName(const std::string& name)
@@ -1021,7 +994,7 @@ bool IsBalanceBoardName(const std::string& name)
 // This is called from the scanner backends (currently on the scanner thread).
 bool IsNewWiimote(const std::string& identifier)
 {
-  std::lock_guard<std::mutex> lk(s_known_ids_mutex);
+  std::lock_guard lk(s_known_ids_mutex);
   return s_known_ids.count(identifier) == 0;
 }
 
@@ -1029,15 +1002,16 @@ void HandleWiimoteSourceChange(unsigned int index)
 {
   std::lock_guard wm_lk(g_wiimotes_mutex);
 
-  if (auto removed_wiimote = std::move(g_wiimotes[index]))
-    AddWiimoteToPool(std::move(removed_wiimote));
-
-  ProcessWiimotePool();
+  Core::RunAsCPUThread([index] {
+    if (auto removed_wiimote = std::move(g_wiimotes[index]))
+      AddWiimoteToPool(std::move(removed_wiimote));
+  });
+  g_controller_interface.PlatformPopulateDevices([] { ProcessWiimotePool(); });
 }
 
 void HandleWiimotesInControllerInterfaceSettingChange()
 {
-  ProcessWiimotePool();
+  g_controller_interface.PlatformPopulateDevices([] { ProcessWiimotePool(); });
 }
 
 }  // namespace WiimoteReal

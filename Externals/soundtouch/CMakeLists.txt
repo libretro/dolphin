@@ -1,3 +1,6 @@
+# OSX meeds to know
+check_and_add_flag(CXX11 -std=c++11)
+
 set(SRCS
 	AAFilter.cpp
 	BPMDetect.cpp
@@ -16,4 +19,4 @@ set(SRCS
 	)
 
 add_library(SoundTouch STATIC ${SRCS})
-add_definitions(-w)
+dolphin_disable_warnings_msvc(SoundTouch)

@@ -1,11 +1,11 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Dynamics.h"
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 #include "Common/MathUtil.h"
 #include "Core/Config/SYSCONFSettings.h"
@@ -58,9 +58,9 @@ double CalculateStopDistance(double velocity, double max_accel)
 
 namespace WiimoteEmu
 {
-Common::Matrix33 ComplementaryFilter(const Common::Matrix33& gyroscope,
-                                     const Common::Vec3& accelerometer, float accel_weight,
-                                     const Common::Vec3& accelerometer_normal)
+Common::Quaternion ComplementaryFilter(const Common::Quaternion& gyroscope,
+                                       const Common::Vec3& accelerometer, float accel_weight,
+                                       const Common::Vec3& accelerometer_normal)
 {
   const auto gyro_vec = gyroscope * accelerometer_normal;
   const auto normalized_accel = accelerometer.Normalized();
@@ -72,16 +72,12 @@ Common::Matrix33 ComplementaryFilter(const Common::Matrix33& gyroscope,
   if (abs_cos_angle > 0 && abs_cos_angle < 1)
   {
     const auto axis = gyro_vec.Cross(normalized_accel).Normalized();
-    return Common::Matrix33::Rotate(std::acos(cos_angle) * accel_weight, axis) * gyroscope;
+    return Common::Quaternion::Rotate(std::acos(cos_angle) * accel_weight, axis) * gyroscope;
   }
   else
   {
     return gyroscope;
   }
-}
-
-IMUCursorState::IMUCursorState() : rotation{Common::Matrix33::Identity()}
-{
 }
 
 void EmulateShake(PositionalState* state, ControllerEmu::Shake* const shake_group,
@@ -120,9 +116,19 @@ void EmulateTilt(RotationalState* state, ControllerEmu::Tilt* const tilt_group, 
   const ControlState roll = target.x * MathUtil::PI;
   const ControlState pitch = target.y * MathUtil::PI;
 
+  const auto target_angle = Common::Vec3(pitch, -roll, 0);
+
+  // For each axis, wrap around current angle if target is farther than 180 degrees.
+  for (std::size_t i = 0; i != target_angle.data.size(); ++i)
+  {
+    auto& angle = state->angle.data[i];
+    if (std::abs(angle - target_angle.data[i]) > float(MathUtil::PI))
+      angle -= std::copysign(MathUtil::TAU, angle);
+  }
+
   const auto max_accel = std::pow(tilt_group->GetMaxRotationalVelocity(), 2) / MathUtil::TAU;
 
-  ApproachAngleWithAccel(state, Common::Vec3(pitch, -roll, 0), max_accel, time_elapsed);
+  ApproachAngleWithAccel(state, target_angle, max_accel, time_elapsed);
 }
 
 void EmulateSwing(MotionState* state, ControllerEmu::Force* swing_group, float time_elapsed)
@@ -216,9 +222,10 @@ WiimoteCommon::AccelData ConvertAccelData(const Common::Vec3& accel, u16 zero_g,
        u16(std::clamp(std::lround(scaled_accel.z + zero_g), 0l, MAX_VALUE))});
 }
 
-void EmulatePoint(MotionState* state, ControllerEmu::Cursor* ir_group, float time_elapsed)
+void EmulatePoint(MotionState* state, ControllerEmu::Cursor* ir_group,
+                  const ControllerEmu::InputOverrideFunction& override_func, float time_elapsed)
 {
-  const auto cursor = ir_group->GetState(true);
+  const auto cursor = ir_group->GetState(true, override_func);
 
   if (!cursor.IsVisible())
   {
@@ -311,14 +318,14 @@ void EmulateIMUCursor(IMUCursorState* state, ControllerEmu::IMUCursor* imu_ir_gr
   }
 
   // Apply rotation from gyro data.
-  const auto gyro_rotation = GetMatrixFromGyroscope(*ang_vel * -1 * time_elapsed);
+  const auto gyro_rotation = GetRotationFromGyroscope(*ang_vel * -1 * time_elapsed);
   state->rotation = gyro_rotation * state->rotation;
 
   // If we have some non-zero accel data use it to adjust gyro drift.
-  constexpr auto ACCEL_WEIGHT = 0.02f;
+  const auto accel_weight = imu_ir_group->GetAccelWeight();
   auto const accel = imu_accelerometer_group->GetState().value_or(Common::Vec3{});
   if (accel.LengthSquared())
-    state->rotation = ComplementaryFilter(state->rotation, accel, ACCEL_WEIGHT);
+    state->rotation = ComplementaryFilter(state->rotation, accel, accel_weight);
 
   // Clamp yaw within configured bounds.
   const auto yaw = GetYaw(state->rotation);
@@ -334,7 +341,10 @@ void EmulateIMUCursor(IMUCursorState* state, ControllerEmu::IMUCursor* imu_ir_gr
 
   // Adjust yaw as needed.
   if (yaw != target_yaw)
-    state->rotation *= Common::Matrix33::RotateZ(target_yaw - yaw);
+    state->rotation *= Common::Quaternion::RotateZ(target_yaw - yaw);
+
+  // Normalize for floating point inaccuracies.
+  state->rotation = state->rotation.Normalized();
 }
 
 void ApproachPositionWithJerk(PositionalState* state, const Common::Vec3& position_target,
@@ -374,7 +384,7 @@ void ApproachPositionWithJerk(PositionalState* state, const Common::Vec3& positi
   }
 }
 
-Common::Matrix33 GetMatrixFromAcceleration(const Common::Vec3& accel)
+Common::Quaternion GetRotationFromAcceleration(const Common::Vec3& accel)
 {
   const auto normalized_accel = accel.Normalized();
 
@@ -382,13 +392,15 @@ Common::Matrix33 GetMatrixFromAcceleration(const Common::Vec3& accel)
   const auto axis = normalized_accel.Cross({0, 0, 1});
 
   // Check that axis is non-zero to handle perfect up/down orientations.
-  return Common::Matrix33::Rotate(angle,
-                                  axis.LengthSquared() ? axis.Normalized() : Common::Vec3{0, 1, 0});
+  return Common::Quaternion::Rotate(angle, axis.LengthSquared() ? axis.Normalized() :
+                                                                  Common::Vec3{0, 1, 0});
 }
 
-Common::Matrix33 GetMatrixFromGyroscope(const Common::Vec3& gyro)
+Common::Quaternion GetRotationFromGyroscope(const Common::Vec3& gyro)
 {
-  return Common::Matrix33::FromQuaternion(gyro.x / 2, gyro.y / 2, gyro.z / 2, 1);
+  const auto length = gyro.Length();
+  return (length != 0) ? Common::Quaternion::Rotate(length, gyro / length) :
+                         Common::Quaternion::Identity();
 }
 
 Common::Matrix33 GetRotationalMatrix(const Common::Vec3& angle)
@@ -397,19 +409,19 @@ Common::Matrix33 GetRotationalMatrix(const Common::Vec3& angle)
          Common::Matrix33::RotateX(angle.x);
 }
 
-float GetPitch(const Common::Matrix33& world_rotation)
+float GetPitch(const Common::Quaternion& world_rotation)
 {
   const auto vec = world_rotation * Common::Vec3{0, 0, 1};
   return std::atan2(vec.y, Common::Vec2(vec.x, vec.z).Length());
 }
 
-float GetRoll(const Common::Matrix33& world_rotation)
+float GetRoll(const Common::Quaternion& world_rotation)
 {
   const auto vec = world_rotation * Common::Vec3{0, 0, 1};
   return std::atan2(vec.x, vec.z);
 }
 
-float GetYaw(const Common::Matrix33& world_rotation)
+float GetYaw(const Common::Quaternion& world_rotation)
 {
   const auto vec = world_rotation.Inverted() * Common::Vec3{0, 1, 0};
   return std::atan2(vec.x, vec.y);

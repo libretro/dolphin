@@ -1,29 +1,12 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 
 #include <d3d12.h>
 #include <wrl/client.h>
 
 #include "Common/MsgHandler.h"
-#include "VideoBackends/D3DCommon/Common.h"
-
-#ifdef _MSC_VER
-#define CHECK(cond, Message, ...)                                                                  \
-  if (!(cond))                                                                                     \
-  {                                                                                                \
-    PanicAlert(__FUNCTION__ " failed in %s at line %d: " Message, __FILE__, __LINE__,              \
-               __VA_ARGS__);                                                                       \
-  }
-#else
-#define CHECK(cond, Message, ...)                                                                  \
-  if (!(cond))                                                                                     \
-  {                                                                                                \
-    PanicAlert("%s failed in %s at line %d: " Message, __FUNCTION__, __FILE__, __LINE__,           \
-               ##__VA_ARGS__);                                                                     \
-  }
-#endif
+#include "VideoBackends/D3DCommon/D3DCommon.h"
 
 namespace DX12
 {

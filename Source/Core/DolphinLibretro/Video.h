@@ -2,15 +2,14 @@
 #pragma once
 
 #include <libretro.h>
-#include "VideoBackends/Null/Render.h"
+#include "Common/GL/GLContext.h"
+#include "DolphinLibretro/Options.h"
+#include "VideoBackends/Null/NullGfx.h"
 #include "VideoBackends/Software/SWOGLWindow.h"
-#include "VideoBackends/Software/SWRenderer.h"
+#include "VideoBackends/Software/SWGfx.h"
 #include "VideoBackends/Software/SWTexture.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
-#ifndef __APPLE__
-#include "VideoBackends/Vulkan/VulkanLoader.h"
-#endif
 #ifdef _WIN32
 #include "VideoBackends/D3D/D3DBase.h"
 #include "VideoBackends/D3D/D3DState.h"
@@ -28,57 +27,78 @@ void Init(void);
 extern retro_video_refresh_t video_cb;
 extern struct retro_hw_render_callback hw_render;
 
-#ifndef __APPLE__
-namespace Vk
-{
-void Init(VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface,
-          PFN_vkGetInstanceProcAddr get_instance_proc_addr, const char** required_device_extensions,
-          unsigned num_required_device_extensions, const char** required_device_layers,
-          unsigned num_required_device_layers, const VkPhysicalDeviceFeatures* required_features);
-void SetSurfaceSize(uint32_t width, uint32_t height);
-void SetHWRenderInterface(retro_hw_render_interface* hw_render_interface);
-void Shutdown();
-void WaitForPresentation();
-}  // namespace Vk
-#endif
-
-class SWRenderer : public SW::SWRenderer
+/* retroGL interface*/
+class RGLContext : public GLContext
 {
 public:
-  SWRenderer()
-      : SW::SWRenderer(SWOGLWindow::Create(
+  RGLContext()
+  {
+    WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+    Initialize(wsi, g_Config.stereo_mode == StereoMode::QuadBuffer, true);
+  }
+  bool IsHeadless() const override { return false; }
+  void Swap() override
+  {
+    Libretro::Video::video_cb(RETRO_HW_FRAME_BUFFER_VALID, m_backbuffer_width, m_backbuffer_height,
+                              0);
+  }
+  void* GetFuncAddress(const std::string& name) override
+  {
+    return (void*)Libretro::Video::hw_render.get_proc_address(name.c_str());
+  }
+  virtual bool Initialize(const WindowSystemInfo& wsi, bool stereo, bool core) override
+  {
+    m_backbuffer_width = EFB_WIDTH * Libretro::Options::efbScale;
+    m_backbuffer_height = EFB_HEIGHT * Libretro::Options::efbScale;
+    switch (Libretro::Video::hw_render.context_type)
+    {
+    case RETRO_HW_CONTEXT_OPENGLES3:
+      m_opengl_mode = Mode::OpenGLES;
+      break;
+    default:
+    case RETRO_HW_CONTEXT_OPENGL_CORE:
+    case RETRO_HW_CONTEXT_OPENGL:
+      m_opengl_mode = Mode::OpenGL;
+      break;
+    }
+
+    return true;
+  }
+};
+
+class SWGfx : public SW::SWGfx
+{
+public:
+  SWGfx()
+    : SW::SWGfx(SWOGLWindow::Create(
             WindowSystemInfo(WindowSystemType::Libretro, nullptr, nullptr, nullptr)))
   {
   }
-  void RenderXFBToScreen(const MathUtil::Rectangle<int>& target_rc,
-                         const AbstractTexture* source_texture,
-                         const MathUtil::Rectangle<int>& source_rc) override
+  void ShowImage(const AbstractTexture* source_texture,
+                 const MathUtil::Rectangle<int>& source_rc) override
   {
-    m_texture = static_cast<const SW::SWTexture*>(source_texture);
-    m_rc = source_rc;
-    SW::SWRenderer::RenderXFBToScreen(target_rc, source_texture, source_rc);
-  }
-
-  void PresentBackbuffer() override
-  {
-    video_cb(m_texture->GetData(), m_rc.GetWidth(), m_rc.GetHeight(), m_texture->GetWidth() * 4);
+    SW::SWGfx::ShowImage(source_texture, source_rc);
+    video_cb(
+      static_cast<const SW::SWTexture*>(source_texture)->GetData(0, 0),
+      source_rc.GetWidth(),
+      source_rc.GetHeight(),
+      source_texture->GetWidth() * 4
+    );
     UpdateActiveConfig();
   }
-
-private:
-  const SW::SWTexture* m_texture;
-  MathUtil::Rectangle<int> m_rc;
 };
 
-class NullRenderer : public Null::Renderer
+class NullGfx : public Null::NullGfx
 {
 public:
-  void PresentBackbuffer() override
+  void ShowImage(const AbstractTexture* source_texture,
+                 const MathUtil::Rectangle<int>& source_rc) override
   {
     video_cb(NULL, 512, 512, 512 * 4);
     UpdateActiveConfig();
   }
 };
+
 #ifdef _WIN32
 class DX11SwapChain : public DX11::SwapChain
 {

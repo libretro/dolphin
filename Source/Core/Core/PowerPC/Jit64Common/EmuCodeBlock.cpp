@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/PowerPC/Jit64Common/EmuCodeBlock.h"
 
@@ -20,6 +19,7 @@
 #include "Core/PowerPC/Jit64Common/Jit64PowerPCState.h"
 #include "Core/PowerPC/MMU.h"
 #include "Core/PowerPC/PowerPC.h"
+#include "Core/System.h"
 
 using namespace Gen;
 
@@ -72,7 +72,7 @@ void EmuCodeBlock::MemoryExceptionCheck()
   if (m_jit.jo.memcheck && !js.fastmemLoadStore && !js.fixupExceptionHandler)
   {
     TEST(32, PPCSTATE(Exceptions), Gen::Imm32(EXCEPTION_DSI));
-    js.exceptionHandler = J_CC(Gen::CC_NZ, true);
+    js.exceptionHandler = J_CC(Gen::CC_NZ, Jump::Near);
     js.fixupExceptionHandler = true;
   }
 }
@@ -80,13 +80,26 @@ void EmuCodeBlock::MemoryExceptionCheck()
 void EmuCodeBlock::SwitchToFarCode()
 {
   m_near_code = GetWritableCodePtr();
-  SetCodePtr(m_far_code.GetWritableCodePtr());
+  m_near_code_end = GetWritableCodeEnd();
+  m_near_code_write_failed = HasWriteFailed();
+  SetCodePtr(m_far_code.GetWritableCodePtr(), m_far_code.GetWritableCodeEnd(),
+             m_far_code.HasWriteFailed());
 }
 
 void EmuCodeBlock::SwitchToNearCode()
 {
-  m_far_code.SetCodePtr(GetWritableCodePtr());
-  SetCodePtr(m_near_code);
+  m_far_code.SetCodePtr(GetWritableCodePtr(), GetWritableCodeEnd(), HasWriteFailed());
+  SetCodePtr(m_near_code, m_near_code_end, m_near_code_write_failed);
+}
+
+FixupBranch EmuCodeBlock::BATAddressLookup(X64Reg addr, X64Reg tmp, const void* bat_table)
+{
+  MOV(64, R(tmp), ImmPtr(bat_table));
+  SHR(32, R(addr), Imm8(PowerPC::BAT_INDEX_SHIFT));
+  MOV(32, R(addr), MComplex(tmp, addr, SCALE_4, 0));
+  BT(32, R(addr), Imm8(MathUtil::IntLog2(PowerPC::BAT_MAPPED_BIT)));
+
+  return J_CC(CC_NC, m_far_code.Enabled() ? Jump::Near : Jump::Short);
 }
 
 FixupBranch EmuCodeBlock::CheckIfSafeAddress(const OpArg& reg_value, X64Reg reg_addr,
@@ -106,7 +119,7 @@ FixupBranch EmuCodeBlock::CheckIfSafeAddress(const OpArg& reg_value, X64Reg reg_
     MOV(32, R(RSCRATCH_EXTRA), R(reg_addr));
 
   // Perform lookup to see if we can use fast path.
-  MOV(64, R(RSCRATCH), ImmPtr(&PowerPC::dbat_table[0]));
+  MOV(64, R(RSCRATCH), ImmPtr(m_jit.m_mmu.GetDBATTable().data()));
   SHR(32, R(RSCRATCH_EXTRA), Imm8(PowerPC::BAT_INDEX_SHIFT));
   TEST(32, MComplex(RSCRATCH, RSCRATCH_EXTRA, SCALE_4, 0), Imm32(PowerPC::BAT_PHYSICAL_BIT));
 
@@ -115,23 +128,7 @@ FixupBranch EmuCodeBlock::CheckIfSafeAddress(const OpArg& reg_value, X64Reg reg_
   if (registers_in_use[RSCRATCH])
     POP(RSCRATCH);
 
-  return J_CC(CC_Z, m_far_code.Enabled());
-}
-
-void EmuCodeBlock::UnsafeLoadRegToReg(X64Reg reg_addr, X64Reg reg_value, int accessSize, s32 offset,
-                                      bool signExtend)
-{
-  OpArg src = MComplex(RMEM, reg_addr, SCALE_1, offset);
-  LoadAndSwap(accessSize, reg_value, src, signExtend);
-}
-
-void EmuCodeBlock::UnsafeLoadRegToRegNoSwap(X64Reg reg_addr, X64Reg reg_value, int accessSize,
-                                            s32 offset, bool signExtend)
-{
-  if (signExtend)
-    MOVSX(32, accessSize, reg_value, MComplex(RMEM, reg_addr, SCALE_1, offset));
-  else
-    MOVZX(32, accessSize, reg_value, MComplex(RMEM, reg_addr, SCALE_1, offset));
+  return J_CC(CC_Z, m_far_code.Enabled() ? Jump::Near : Jump::Short);
 }
 
 void EmuCodeBlock::UnsafeWriteRegToReg(OpArg reg_value, X64Reg reg_addr, int accessSize, s32 offset,
@@ -212,10 +209,10 @@ template <typename T>
 class MMIOReadCodeGenerator : public MMIO::ReadHandlingMethodVisitor<T>
 {
 public:
-  MMIOReadCodeGenerator(Gen::X64CodeBlock* code, BitSet32 registers_in_use, Gen::X64Reg dst_reg,
-                        u32 address, bool sign_extend)
-      : m_code(code), m_registers_in_use(registers_in_use), m_dst_reg(dst_reg), m_address(address),
-        m_sign_extend(sign_extend)
+  MMIOReadCodeGenerator(Core::System* system, Gen::X64CodeBlock* code, BitSet32 registers_in_use,
+                        Gen::X64Reg dst_reg, u32 address, bool sign_extend)
+      : m_system(system), m_code(code), m_registers_in_use(registers_in_use), m_dst_reg(dst_reg),
+        m_address(address), m_sign_extend(sign_extend)
   {
   }
 
@@ -224,7 +221,7 @@ public:
   {
     LoadAddrMaskToReg(8 * sizeof(T), addr, mask);
   }
-  void VisitComplex(const std::function<T(u32)>* lambda) override
+  void VisitComplex(const std::function<T(Core::System&, u32)>* lambda) override
   {
     CallLambda(8 * sizeof(T), lambda);
   }
@@ -273,14 +270,15 @@ private:
     }
   }
 
-  void CallLambda(int sbits, const std::function<T(u32)>* lambda)
+  void CallLambda(int sbits, const std::function<T(Core::System&, u32)>* lambda)
   {
     m_code->ABI_PushRegistersAndAdjustStack(m_registers_in_use, 0);
-    m_code->ABI_CallLambdaC(lambda, m_address);
+    m_code->ABI_CallLambdaPC(lambda, m_system, m_address);
     m_code->ABI_PopRegistersAndAdjustStack(m_registers_in_use, 0);
     MoveOpArgToReg(sbits, R(ABI_RETURN));
   }
 
+  Core::System* m_system;
   Gen::X64CodeBlock* m_code;
   BitSet32 m_registers_in_use;
   Gen::X64Reg m_dst_reg;
@@ -296,19 +294,22 @@ void EmuCodeBlock::MMIOLoadToReg(MMIO::Mapping* mmio, Gen::X64Reg reg_value,
   {
   case 8:
   {
-    MMIOReadCodeGenerator<u8> gen(this, registers_in_use, reg_value, address, sign_extend);
+    MMIOReadCodeGenerator<u8> gen(&m_jit.m_system, this, registers_in_use, reg_value, address,
+                                  sign_extend);
     mmio->GetHandlerForRead<u8>(address).Visit(gen);
     break;
   }
   case 16:
   {
-    MMIOReadCodeGenerator<u16> gen(this, registers_in_use, reg_value, address, sign_extend);
+    MMIOReadCodeGenerator<u16> gen(&m_jit.m_system, this, registers_in_use, reg_value, address,
+                                   sign_extend);
     mmio->GetHandlerForRead<u16>(address).Visit(gen);
     break;
   }
   case 32:
   {
-    MMIOReadCodeGenerator<u32> gen(this, registers_in_use, reg_value, address, sign_extend);
+    MMIOReadCodeGenerator<u32> gen(&m_jit.m_system, this, registers_in_use, reg_value, address,
+                                   sign_extend);
     mmio->GetHandlerForRead<u32>(address).Visit(gen);
     break;
   }
@@ -318,12 +319,12 @@ void EmuCodeBlock::MMIOLoadToReg(MMIO::Mapping* mmio, Gen::X64Reg reg_value,
 void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg& opAddress, int accessSize,
                                  s32 offset, BitSet32 registersInUse, bool signExtend, int flags)
 {
-  bool slowmem = (flags & SAFE_LOADSTORE_FORCE_SLOWMEM) != 0;
+  bool force_slow_access = (flags & SAFE_LOADSTORE_FORCE_SLOW_ACCESS) != 0;
 
   auto& js = m_jit.js;
   registersInUse[reg_value] = false;
   if (m_jit.jo.fastmem && !(flags & (SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_UPDATE_PC)) &&
-      !slowmem)
+      !force_slow_access)
   {
     u8* backpatchStart = GetWritableCodePtr();
     MovInfo mov;
@@ -370,8 +371,9 @@ void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg& opAddress, 
   }
 
   FixupBranch exit;
-  const bool dr_set = (flags & SAFE_LOADSTORE_DR_ON) || MSR.DR;
-  const bool fast_check_address = !slowmem && dr_set && m_jit.jo.fastmem_arena;
+  const bool dr_set = (flags & SAFE_LOADSTORE_DR_ON) || m_jit.m_ppc_state.msr.DR;
+  const bool fast_check_address =
+      !force_slow_access && dr_set && m_jit.jo.fastmem_arena && !m_jit.m_ppc_state.m_enable_dcache;
   if (fast_check_address)
   {
     FixupBranch slow = CheckIfSafeAddress(R(reg_value), reg_addr, registersInUse);
@@ -379,7 +381,7 @@ void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg& opAddress, 
     if (m_far_code.Enabled())
       SwitchToFarCode();
     else
-      exit = J(true);
+      exit = J(Jump::Near);
     SetJumpTarget(slow);
   }
 
@@ -395,16 +397,16 @@ void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg& opAddress, 
   switch (accessSize)
   {
   case 64:
-    ABI_CallFunctionR(PowerPC::Read_U64, reg_addr);
+    ABI_CallFunctionPR(PowerPC::ReadU64FromJit64, &m_jit.m_mmu, reg_addr);
     break;
   case 32:
-    ABI_CallFunctionR(PowerPC::Read_U32, reg_addr);
+    ABI_CallFunctionPR(PowerPC::ReadU32FromJit64, &m_jit.m_mmu, reg_addr);
     break;
   case 16:
-    ABI_CallFunctionR(PowerPC::Read_U16_ZX, reg_addr);
+    ABI_CallFunctionPR(PowerPC::ReadU16ZXFromJit64, &m_jit.m_mmu, reg_addr);
     break;
   case 8:
-    ABI_CallFunctionR(PowerPC::Read_U8_ZX, reg_addr);
+    ABI_CallFunctionPR(PowerPC::ReadU8ZXFromJit64, &m_jit.m_mmu, reg_addr);
     break;
   }
   ABI_PopRegistersAndAdjustStack(registersInUse, rsp_alignment);
@@ -424,7 +426,7 @@ void EmuCodeBlock::SafeLoadToReg(X64Reg reg_value, const Gen::OpArg& opAddress, 
   {
     if (m_far_code.Enabled())
     {
-      exit = J(true);
+      exit = J(Jump::Near);
       SwitchToNearCode();
     }
     SetJumpTarget(exit);
@@ -435,17 +437,18 @@ void EmuCodeBlock::SafeLoadToRegImmediate(X64Reg reg_value, u32 address, int acc
                                           BitSet32 registersInUse, bool signExtend)
 {
   // If the address is known to be RAM, just load it directly.
-  if (m_jit.jo.fastmem_arena && PowerPC::IsOptimizableRAMAddress(address))
+  if (m_jit.jo.fastmem_arena && m_jit.m_mmu.IsOptimizableRAMAddress(address))
   {
     UnsafeLoadToReg(reg_value, Imm32(address), accessSize, 0, signExtend);
     return;
   }
 
   // If the address maps to an MMIO register, inline MMIO read code.
-  u32 mmioAddress = PowerPC::IsOptimizableMMIOAccess(address, accessSize);
+  u32 mmioAddress = m_jit.m_mmu.IsOptimizableMMIOAccess(address, accessSize);
   if (accessSize != 64 && mmioAddress)
   {
-    MMIOLoadToReg(Memory::mmio_mapping.get(), reg_value, registersInUse, mmioAddress, accessSize,
+    auto& memory = m_jit.m_system.GetMemory();
+    MMIOLoadToReg(memory.GetMMIOMapping(), reg_value, registersInUse, mmioAddress, accessSize,
                   signExtend);
     return;
   }
@@ -458,16 +461,16 @@ void EmuCodeBlock::SafeLoadToRegImmediate(X64Reg reg_value, u32 address, int acc
   switch (accessSize)
   {
   case 64:
-    ABI_CallFunctionC(PowerPC::Read_U64, address);
+    ABI_CallFunctionPC(PowerPC::ReadU64FromJit64, &m_jit.m_mmu, address);
     break;
   case 32:
-    ABI_CallFunctionC(PowerPC::Read_U32, address);
+    ABI_CallFunctionPC(PowerPC::ReadU32FromJit64, &m_jit.m_mmu, address);
     break;
   case 16:
-    ABI_CallFunctionC(PowerPC::Read_U16_ZX, address);
+    ABI_CallFunctionPC(PowerPC::ReadU16ZXFromJit64, &m_jit.m_mmu, address);
     break;
   case 8:
-    ABI_CallFunctionC(PowerPC::Read_U8_ZX, address);
+    ABI_CallFunctionPC(PowerPC::ReadU8ZXFromJit64, &m_jit.m_mmu, address);
     break;
   }
   ABI_PopRegistersAndAdjustStack(registersInUse, 0);
@@ -488,14 +491,14 @@ void EmuCodeBlock::SafeWriteRegToReg(OpArg reg_value, X64Reg reg_addr, int acces
                                      BitSet32 registersInUse, int flags)
 {
   bool swap = !(flags & SAFE_LOADSTORE_NO_SWAP);
-  bool slowmem = (flags & SAFE_LOADSTORE_FORCE_SLOWMEM) != 0;
+  bool force_slow_access = (flags & SAFE_LOADSTORE_FORCE_SLOW_ACCESS) != 0;
 
   // set the correct immediate format
   reg_value = FixImmediate(accessSize, reg_value);
 
   auto& js = m_jit.js;
   if (m_jit.jo.fastmem && !(flags & (SAFE_LOADSTORE_NO_FASTMEM | SAFE_LOADSTORE_NO_UPDATE_PC)) &&
-      !slowmem)
+      !force_slow_access)
   {
     u8* backpatchStart = GetWritableCodePtr();
     MovInfo mov;
@@ -538,8 +541,9 @@ void EmuCodeBlock::SafeWriteRegToReg(OpArg reg_value, X64Reg reg_addr, int acces
   }
 
   FixupBranch exit;
-  const bool dr_set = (flags & SAFE_LOADSTORE_DR_ON) || MSR.DR;
-  const bool fast_check_address = !slowmem && dr_set && m_jit.jo.fastmem_arena;
+  const bool dr_set = (flags & SAFE_LOADSTORE_DR_ON) || m_jit.m_ppc_state.msr.DR;
+  const bool fast_check_address =
+      !force_slow_access && dr_set && m_jit.jo.fastmem_arena && !m_jit.m_ppc_state.m_enable_dcache;
   if (fast_check_address)
   {
     FixupBranch slow = CheckIfSafeAddress(reg_value, reg_addr, registersInUse);
@@ -547,7 +551,7 @@ void EmuCodeBlock::SafeWriteRegToReg(OpArg reg_value, X64Reg reg_addr, int acces
     if (m_far_code.Enabled())
       SwitchToFarCode();
     else
-      exit = J(true);
+      exit = J(Jump::Near);
     SetJumpTarget(slow);
   }
 
@@ -576,16 +580,19 @@ void EmuCodeBlock::SafeWriteRegToReg(OpArg reg_value, X64Reg reg_addr, int acces
   switch (accessSize)
   {
   case 64:
-    ABI_CallFunctionRR(swap ? PowerPC::Write_U64 : PowerPC::Write_U64_Swap, reg, reg_addr);
+    ABI_CallFunctionPRR(swap ? PowerPC::WriteU64FromJit64 : PowerPC::WriteU64SwapFromJit64,
+                        &m_jit.m_mmu, reg, reg_addr);
     break;
   case 32:
-    ABI_CallFunctionRR(swap ? PowerPC::Write_U32 : PowerPC::Write_U32_Swap, reg, reg_addr);
+    ABI_CallFunctionPRR(swap ? PowerPC::WriteU32FromJit64 : PowerPC::WriteU32SwapFromJit64,
+                        &m_jit.m_mmu, reg, reg_addr);
     break;
   case 16:
-    ABI_CallFunctionRR(swap ? PowerPC::Write_U16 : PowerPC::Write_U16_Swap, reg, reg_addr);
+    ABI_CallFunctionPRR(swap ? PowerPC::WriteU16FromJit64 : PowerPC::WriteU16SwapFromJit64,
+                        &m_jit.m_mmu, reg, reg_addr);
     break;
   case 8:
-    ABI_CallFunctionRR(PowerPC::Write_U8, reg, reg_addr);
+    ABI_CallFunctionPRR(PowerPC::WriteU8FromJit64, &m_jit.m_mmu, reg, reg_addr);
     break;
   }
   ABI_PopRegistersAndAdjustStack(registersInUse, rsp_alignment);
@@ -596,7 +603,7 @@ void EmuCodeBlock::SafeWriteRegToReg(OpArg reg_value, X64Reg reg_addr, int acces
   {
     if (m_far_code.Enabled())
     {
-      exit = J(true);
+      exit = J(Jump::Near);
       SwitchToNearCode();
     }
     SetJumpTarget(exit);
@@ -621,7 +628,7 @@ bool EmuCodeBlock::WriteToConstAddress(int accessSize, OpArg arg, u32 address,
 
   // If we already know the address through constant folding, we can do some
   // fun tricks...
-  if (m_jit.jo.optimizeGatherPipe && PowerPC::IsOptimizableGatherPipeWrite(address))
+  if (m_jit.jo.optimizeGatherPipe && m_jit.m_mmu.IsOptimizableGatherPipeWrite(address))
   {
     X64Reg arg_reg = RSCRATCH;
 
@@ -641,7 +648,7 @@ bool EmuCodeBlock::WriteToConstAddress(int accessSize, OpArg arg, u32 address,
     m_jit.js.fifoBytesSinceCheck += accessSize >> 3;
     return false;
   }
-  else if (m_jit.jo.fastmem_arena && PowerPC::IsOptimizableRAMAddress(address))
+  else if (m_jit.jo.fastmem_arena && m_jit.m_mmu.IsOptimizableRAMAddress(address))
   {
     WriteToConstRamAddress(accessSize, arg, address);
     return false;
@@ -655,16 +662,16 @@ bool EmuCodeBlock::WriteToConstAddress(int accessSize, OpArg arg, u32 address,
     switch (accessSize)
     {
     case 64:
-      ABI_CallFunctionAC(64, PowerPC::Write_U64, arg, address);
+      ABI_CallFunctionPAC(64, PowerPC::WriteU64FromJit64, &m_jit.m_mmu, arg, address);
       break;
     case 32:
-      ABI_CallFunctionAC(32, PowerPC::Write_U32, arg, address);
+      ABI_CallFunctionPAC(32, PowerPC::WriteU32FromJit64, &m_jit.m_mmu, arg, address);
       break;
     case 16:
-      ABI_CallFunctionAC(16, PowerPC::Write_U16, arg, address);
+      ABI_CallFunctionPAC(16, PowerPC::WriteU16FromJit64, &m_jit.m_mmu, arg, address);
       break;
     case 8:
-      ABI_CallFunctionAC(8, PowerPC::Write_U8, arg, address);
+      ABI_CallFunctionPAC(8, PowerPC::WriteU8FromJit64, &m_jit.m_mmu, arg, address);
       break;
     }
     ABI_PopRegistersAndAdjustStack(registersInUse, 0);
@@ -722,34 +729,6 @@ void EmuCodeBlock::JitSetCAIf(CCFlags conditionCode)
 void EmuCodeBlock::JitClearCA()
 {
   MOV(8, PPCSTATE(xer_ca), Imm8(0));
-}
-
-void EmuCodeBlock::ForceSinglePrecision(X64Reg output, const OpArg& input, bool packed,
-                                        bool duplicate)
-{
-  // Most games don't need these. Zelda requires it though - some platforms get stuck without them.
-  if (m_jit.jo.accurateSinglePrecision)
-  {
-    if (packed)
-    {
-      CVTPD2PS(output, input);
-      CVTPS2PD(output, R(output));
-    }
-    else
-    {
-      CVTSD2SS(output, input);
-      CVTSS2SD(output, R(output));
-      if (duplicate)
-        MOVDDUP(output, R(output));
-    }
-  }
-  else if (!input.IsSimpleReg(output))
-  {
-    if (duplicate)
-      MOVDDUP(output, input);
-    else
-      MOVAPD(output, input);
-  }
 }
 
 // Abstract between AVX and SSE: automatically handle 3-operand instructions
@@ -825,7 +804,8 @@ void EmuCodeBlock::avx_op(void (XEmitter::*avxOp)(X64Reg, X64Reg, const OpArg&, 
     else
     {
       (this->*sseOp)(XMM0, arg2, imm);
-      MOVAPD(regOp, R(XMM0));
+      if (regOp != XMM0)
+        MOVAPD(regOp, R(XMM0));
     }
   }
   else
@@ -888,14 +868,14 @@ void EmuCodeBlock::ConvertSingleToDouble(X64Reg dst, X64Reg src, bool src_is_gpr
 
   UCOMISS(dst, R(dst));
   CVTSS2SD(dst, R(dst));
-  FixupBranch nanConversion = J_CC(CC_P, true);
+  FixupBranch nanConversion = J_CC(CC_P, Jump::Near);
 
   SwitchToFarCode();
   SetJumpTarget(nanConversion);
   TEST(32, R(gprsrc), Imm32(0x00400000));
-  FixupBranch continue1 = J_CC(CC_NZ, true);
+  FixupBranch continue1 = J_CC(CC_NZ, Jump::Near);
   ANDPD(dst, MConst(double_qnan_bit));
-  FixupBranch continue2 = J(true);
+  FixupBranch continue2 = J(Jump::Near);
   SwitchToNearCode();
 
   SetJumpTarget(continue1);
@@ -903,30 +883,35 @@ void EmuCodeBlock::ConvertSingleToDouble(X64Reg dst, X64Reg src, bool src_is_gpr
   MOVDDUP(dst, R(dst));
 }
 
-alignas(16) static const u64 psDoubleExp[2] = {0x7FF0000000000000ULL, 0};
-alignas(16) static const u64 psDoubleFrac[2] = {0x000FFFFFFFFFFFFFULL, 0};
-alignas(16) static const u64 psDoubleNoSign[2] = {0x7FFFFFFFFFFFFFFFULL, 0};
+alignas(16) static const u64 psDoubleExp[2] = {Common::DOUBLE_EXP, 0};
+alignas(16) static const u64 psDoubleFrac[2] = {Common::DOUBLE_FRAC, 0};
+alignas(16) static const u64 psDoubleNoSign[2] = {~Common::DOUBLE_SIGN, 0};
+
+alignas(16) static const u32 psFloatExp[4] = {Common::FLOAT_EXP, 0, 0, 0};
+alignas(16) static const u32 psFloatFrac[4] = {Common::FLOAT_FRAC, 0, 0, 0};
+alignas(16) static const u32 psFloatNoSign[4] = {~Common::FLOAT_SIGN, 0, 0, 0};
 
 // TODO: it might be faster to handle FPRF in the same way as CR is currently handled for integer,
-// storing
-// the result of each floating point op and calculating it when needed. This is trickier than for
-// integers
-// though, because there's 32 possible FPRF bit combinations but only 9 categories of floating point
-// values,
-// which makes the whole thing rather trickier.
-// Fortunately, PPCAnalyzer can optimize out a large portion of FPRF calculations, so maybe this
-// isn't
-// quite that necessary.
-void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
+// storing the result of each floating point op and calculating it when needed. This is trickier
+// than for integers though, because there's 32 possible FPRF bit combinations but only 9 categories
+// of floating point values. Fortunately, PPCAnalyzer can optimize out a large portion of FPRF
+// calculations, so maybe this isn't quite that necessary.
+void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm, bool single)
 {
+  const int input_size = single ? 32 : 64;
+
   AND(32, PPCSTATE(fpscr), Imm32(~FPRF_MASK));
 
   FixupBranch continue1, continue2, continue3, continue4;
   if (cpu_info.bSSE4_1)
   {
     MOVQ_xmm(R(RSCRATCH), xmm);
-    SHR(64, R(RSCRATCH), Imm8(63));  // Get the sign bit; almost all the branches need it.
-    PTEST(xmm, MConst(psDoubleExp));
+    // Get the sign bit; almost all the branches need it.
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
+    if (single)
+      PTEST(xmm, MConst(psFloatExp));
+    else
+      PTEST(xmm, MConst(psDoubleExp));
     FixupBranch maxExponent = J_CC(CC_C);
     FixupBranch zeroExponent = J_CC(CC_Z);
 
@@ -936,7 +921,10 @@ void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
     continue1 = J();
 
     SetJumpTarget(maxExponent);
-    PTEST(xmm, MConst(psDoubleFrac));
+    if (single)
+      PTEST(xmm, MConst(psFloatFrac));
+    else
+      PTEST(xmm, MConst(psDoubleFrac));
     FixupBranch notNAN = J_CC(CC_Z);
 
     // Max exponent + mantissa: PPC_FPCLASS_QNAN
@@ -951,7 +939,10 @@ void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
     continue3 = J();
 
     SetJumpTarget(zeroExponent);
-    PTEST(xmm, MConst(psDoubleNoSign));
+    if (single)
+      PTEST(xmm, MConst(psFloatNoSign));
+    else
+      PTEST(xmm, MConst(psDoubleNoSign));
     FixupBranch zero = J_CC(CC_Z);
 
     // No exponent + mantissa: sign ? PPC_FPCLASS_ND : PPC_FPCLASS_PD;
@@ -967,37 +958,58 @@ void EmuCodeBlock::SetFPRF(Gen::X64Reg xmm)
   else
   {
     MOVQ_xmm(R(RSCRATCH), xmm);
-    TEST(64, R(RSCRATCH), MConst(psDoubleExp));
+    if (single)
+      TEST(32, R(RSCRATCH), Imm32(Common::FLOAT_EXP));
+    else
+      TEST(64, R(RSCRATCH), MConst(psDoubleExp));
     FixupBranch zeroExponent = J_CC(CC_Z);
-    AND(64, R(RSCRATCH), MConst(psDoubleNoSign));
-    CMP(64, R(RSCRATCH), MConst(psDoubleExp));
+
+    if (single)
+    {
+      AND(32, R(RSCRATCH), Imm32(~Common::FLOAT_SIGN));
+      CMP(32, R(RSCRATCH), Imm32(Common::FLOAT_EXP));
+    }
+    else
+    {
+      AND(64, R(RSCRATCH), MConst(psDoubleNoSign));
+      CMP(64, R(RSCRATCH), MConst(psDoubleExp));
+    }
     FixupBranch nan =
         J_CC(CC_G);  // This works because if the sign bit is set, RSCRATCH is negative
     FixupBranch infinity = J_CC(CC_E);
+
     MOVQ_xmm(R(RSCRATCH), xmm);
-    SHR(64, R(RSCRATCH), Imm8(63));
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     LEA(32, RSCRATCH,
         MScaled(RSCRATCH, Common::PPC_FPCLASS_NN - Common::PPC_FPCLASS_PN, Common::PPC_FPCLASS_PN));
     continue1 = J();
+
     SetJumpTarget(nan);
     MOV(32, R(RSCRATCH), Imm32(Common::PPC_FPCLASS_QNAN));
     continue2 = J();
+
     SetJumpTarget(infinity);
     MOVQ_xmm(R(RSCRATCH), xmm);
-    SHR(64, R(RSCRATCH), Imm8(63));
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     LEA(32, RSCRATCH,
         MScaled(RSCRATCH, Common::PPC_FPCLASS_NINF - Common::PPC_FPCLASS_PINF,
                 Common::PPC_FPCLASS_PINF));
     continue3 = J();
+
     SetJumpTarget(zeroExponent);
-    TEST(64, R(RSCRATCH), R(RSCRATCH));
+    if (single)
+      TEST(input_size, R(RSCRATCH), Imm32(~Common::FLOAT_SIGN));
+    else
+      TEST(input_size, R(RSCRATCH), MConst(psDoubleNoSign));
     FixupBranch zero = J_CC(CC_Z);
-    SHR(64, R(RSCRATCH), Imm8(63));
+
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     LEA(32, RSCRATCH,
         MScaled(RSCRATCH, Common::PPC_FPCLASS_ND - Common::PPC_FPCLASS_PD, Common::PPC_FPCLASS_PD));
     continue4 = J();
+
     SetJumpTarget(zero);
-    SHR(64, R(RSCRATCH), Imm8(63));
+    SHR(input_size, R(RSCRATCH), Imm8(input_size - 1));
     SHL(32, R(RSCRATCH), Imm8(4));
     ADD(32, R(RSCRATCH), Imm8(Common::PPC_FPCLASS_PZ));
   }

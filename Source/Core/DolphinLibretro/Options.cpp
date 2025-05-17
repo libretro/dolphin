@@ -137,7 +137,11 @@ Option<int> maxAnisotropy("dolphin_max_anisotropy", "Max Anisotropy", {"1x", "2x
 Option<bool> skipDupeFrames("dolphin_skip_dupe_frames", "Skip Presenting Duplicate Frames", true);
 Option<bool> immediatexfb("dolphin_immediate_xfb", "Immediate XFB", false);
 Option<bool> efbScaledCopy("dolphin_efb_scaled_copy", "Scaled EFB Copy", true);
-Option<bool> forceTextureFiltering("dolphin_force_texture_filtering", "Force Texture Filtering", false);
+Option<TextureFilteringMode> forceTextureFilteringMode("dolphin_force_texture_filtering_mode", "Force Texture Filtering Mode", {
+                                                      {"Disabled", TextureFilteringMode::Default},
+                                                      {"Nearest", TextureFilteringMode::Nearest},
+                                                      {"Linear", TextureFilteringMode::Linear},
+});
 Option<bool> efbToTexture("dolphin_efb_to_texture", "Store EFB Copies on GPU", true);
 Option<int> textureCacheAccuracy("dolphin_texture_cache_accuracy", "Texture Cache Accuracy",
                                  {{"Fast", 128}, {"Middle", 512}, {"Safe", 0}});
@@ -237,13 +241,13 @@ Option<DiscIO::Language> Language("dolphin_language", "Language",
                                    {"Korean", DiscIO::Language::Korean}});
 Option<bool> cheatsEnabled("dolphin_cheats_enabled", "Internal Cheats Enabled", false);
 Option<bool> osdEnabled("dolphin_osd_enabled", "OSD Enabled", true);
-Option<Common::Log::LOG_LEVELS> logLevel("dolphin_log_level", "Log Level", {
-                                         {"Info", Common::Log::LINFO},
+Option<Common::Log::LogLevel> logLevel("dolphin_log_level", "Log Level", {
+                                         {"Info", Common::Log::LogLevel::LINFO},
 #if defined(_DEBUG) || defined(DEBUGFAST)
-                                         {"Debug", Common::Log::LDEBUG},
+                                         {"Debug", Common::Log::LogLevel::LDEBUG},
 #endif
-                                         {"Notice", Common::Log::LNOTICE},
-                                         {"Error", Common::Log::LERROR},
-                                         {"Warning", Common::Log::LWARNING}});
+                                         {"Notice", Common::Log::LogLevel::LNOTICE},
+                                         {"Error", Common::Log::LogLevel::LERROR},
+                                         {"Warning", Common::Log::LogLevel::LWARNING}});
 }  // namespace Options
 }  // namespace Libretro

@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -24,7 +23,7 @@ public:
   virtual void ResolveFromTexture(const AbstractTexture* src, const MathUtil::Rectangle<int>& rect,
                                   u32 layer, u32 level) = 0;
   virtual void Load(u32 level, u32 width, u32 height, u32 row_length, const u8* buffer,
-                    size_t buffer_size) = 0;
+                    size_t buffer_size, u32 layer = 0) = 0;
 
   // Hints to the backend that we have finished rendering to this texture, and it will be used
   // as a shader resource and sampled. For Vulkan, this transitions the image layout.
@@ -39,7 +38,7 @@ public:
   MathUtil::Rectangle<int> GetRect() const { return m_config.GetRect(); }
   MathUtil::Rectangle<int> GetMipRect(u32 level) const { return m_config.GetMipRect(level); }
   bool IsMultisampled() const { return m_config.IsMultisampled(); }
-  bool Save(const std::string& filename, unsigned int level);
+  bool Save(const std::string& filename, unsigned int level, int compression = 6);
 
   static bool IsCompressedFormat(AbstractTextureFormat format);
   static bool IsDepthFormat(AbstractTextureFormat format);

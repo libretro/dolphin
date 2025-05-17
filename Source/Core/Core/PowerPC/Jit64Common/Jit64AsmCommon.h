@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -9,6 +8,8 @@
 #include "Core/PowerPC/JitCommon/JitAsmCommon.h"
 
 enum EQuantizeType : u32;
+
+class Jit64;
 
 class QuantizedMemoryRoutines : public EmuCodeBlock
 {
@@ -25,7 +26,7 @@ private:
 class CommonAsmRoutines : public CommonAsmRoutinesBase, public QuantizedMemoryRoutines
 {
 public:
-  explicit CommonAsmRoutines(Jit64& jit) : QuantizedMemoryRoutines(jit) {}
+  explicit CommonAsmRoutines(Jit64& jit) : QuantizedMemoryRoutines(jit), m_jit(jit) {}
   void GenFrsqrte();
   void GenFres();
   void GenMfcr();
@@ -38,4 +39,6 @@ protected:
   void GenQuantizedSingleLoads();
   void GenQuantizedStores();
   void GenQuantizedSingleStores();
+
+  Jit64& m_jit;
 };

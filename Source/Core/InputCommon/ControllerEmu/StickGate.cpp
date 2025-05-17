@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "InputCommon/ControllerEmu/StickGate.h"
 
@@ -25,21 +24,37 @@ constexpr auto CALIBRATION_CONFIG_SCALE = 100;
 constexpr auto CENTER_CONFIG_NAME = "Center";
 constexpr auto CENTER_CONFIG_SCALE = 100;
 
-// Calculate distance to intersection of a ray with a line defined by two points.
-double GetRayLineIntersection(Common::DVec2 ray, Common::DVec2 point1, Common::DVec2 point2)
+// Calculate distance to intersection of a ray with a line segment defined by two points.
+std::optional<double> GetRayLineIntersection(Common::DVec2 ray, Common::DVec2 point1,
+                                             Common::DVec2 point2)
 {
   const auto diff = point2 - point1;
 
   const auto dot = diff.Dot({-ray.y, ray.x});
   if (std::abs(dot) < 0.00001)
   {
-    // Handle situation where both points are on top of eachother.
-    // This could occur if the user configures a single calibration value
-    // or when updating calibration.
-    return point1.Length();
+    // Both points are on top of eachother.
+    return std::nullopt;
+  }
+
+  const auto segment_position = point1.Dot({ray.y, -ray.x}) / dot;
+  if (segment_position < -0.00001 || segment_position > 1.00001)
+  {
+    // Ray does not pass through segment.
+    return std::nullopt;
   }
 
   return diff.Cross(-point1) / dot;
+}
+
+double GetNearestNotch(double angle, double virtual_notch_angle)
+{
+  constexpr auto sides = 8;
+  constexpr auto rounding = MathUtil::TAU / sides;
+  const auto closest_notch = std::round(angle / rounding) * rounding;
+  const auto angle_diff =
+      std::fmod(angle - closest_notch + MathUtil::PI, MathUtil::TAU) - MathUtil::PI;
+  return std::abs(angle_diff) < virtual_notch_angle / 2 ? closest_notch : angle;
 }
 
 Common::DVec2 GetPointFromAngleAndLength(double angle, double length)
@@ -112,6 +127,7 @@ std::optional<u32> SquareStickGate::GetIdealCalibrationSampleCount() const
 ReshapableInput::ReshapableInput(std::string name_, std::string ui_name_, GroupType type_)
     : ControlGroup(std::move(name_), std::move(ui_name_), type_)
 {
+  // 50 is not always enough but users can set it to more with an expression
   AddDeadzoneSetting(&m_deadzone_setting, 50);
 }
 
@@ -147,9 +163,13 @@ ControlState ReshapableInput::GetCalibrationDataRadiusAtAngle(const CalibrationD
   const double sample1_angle = sample1_index * MathUtil::TAU / data.size();
   const double sample2_angle = sample2_index * MathUtil::TAU / data.size();
 
-  return GetRayLineIntersection(GetPointFromAngleAndLength(angle, 1.0),
-                                GetPointFromAngleAndLength(sample1_angle, data[sample1_index]),
-                                GetPointFromAngleAndLength(sample2_angle, data[sample2_index]));
+  const auto intersection =
+      GetRayLineIntersection(GetPointFromAngleAndLength(angle, 1.0),
+                             GetPointFromAngleAndLength(sample1_angle, data[sample1_index]),
+                             GetPointFromAngleAndLength(sample2_angle, data[sample2_index]));
+
+  // Intersection has no value when points are on top of eachother.
+  return intersection.value_or(data[sample1_index]);
 }
 
 ControlState ReshapableInput::GetDefaultInputRadiusAtAngle(double angle) const
@@ -173,46 +193,16 @@ void ReshapableInput::SetCalibrationFromGate(const StickGate& gate)
     val = gate.GetRadiusAtAngle(MathUtil::TAU * i++ / m_calibration.size());
 }
 
-void ReshapableInput::UpdateCalibrationData(CalibrationData& data, Common::DVec2 point)
+void ReshapableInput::UpdateCalibrationData(CalibrationData& data, Common::DVec2 point1,
+                                            Common::DVec2 point2)
 {
-  const auto angle_scale = MathUtil::TAU / data.size();
-
-  const u32 calibration_index =
-      std::lround((std::atan2(point.y, point.x) + MathUtil::TAU) / angle_scale) % data.size();
-  const double calibration_angle = calibration_index * angle_scale;
-  auto& calibration_sample = data[calibration_index];
-
-  // Update closest sample from provided x,y.
-  calibration_sample = std::clamp(point.Length(), calibration_sample,
-                                  SquareStickGate(1).GetRadiusAtAngle(calibration_angle));
-
-  // Here we update all other samples in our calibration vector to maintain
-  // a convex polygon containing our new calibration point.
-  // This is required to properly fill in angles that cannot be gotten.
-  // (e.g. Keyboard input only has 8 possible angles)
-
-  // Note: Loop assumes an even sample count, which should not be a problem.
-  for (auto sample_offset = u32(data.size() / 2 - 1); sample_offset > 1; --sample_offset)
+  for (u32 i = 0; i != data.size(); ++i)
   {
-    const auto update_at_offset = [&](u32 offset1, u32 offset2) {
-      const u32 sample1_index = (calibration_index + offset1) % data.size();
-      const double sample1_angle = sample1_index * angle_scale;
-      auto& sample1 = data[sample1_index];
+    const auto angle = i * MathUtil::TAU / data.size();
+    const auto intersection =
+        GetRayLineIntersection(GetPointFromAngleAndLength(angle, 1.0), point1, point2);
 
-      const u32 sample2_index = (calibration_index + offset2) % data.size();
-      const double sample2_angle = sample2_index * angle_scale;
-      auto& sample2 = data[sample2_index];
-
-      const double intersection =
-          GetRayLineIntersection(GetPointFromAngleAndLength(sample2_angle, 1.0),
-                                 GetPointFromAngleAndLength(sample1_angle, sample1),
-                                 GetPointFromAngleAndLength(calibration_angle, calibration_sample));
-
-      sample2 = std::max(sample2, intersection);
-    };
-
-    update_at_offset(sample_offset, sample_offset - 1);
-    update_at_offset(u32(data.size() - sample_offset), u32(data.size() - sample_offset + 1));
+    data[i] = std::max(data[i], intersection.value_or(data[i]));
   }
 }
 
@@ -236,12 +226,21 @@ void ReshapableInput::SetCenter(ReshapableInput::ReshapeData center)
   m_center = center;
 }
 
-void ReshapableInput::LoadConfig(IniFile::Section* section, const std::string& default_device,
-                                 const std::string& base_name)
+void ReshapableInput::LoadConfig(Common::IniFile::Section* section,
+                                 const std::string& default_device, const std::string& base_name)
 {
   ControlGroup::LoadConfig(section, default_device, base_name);
 
   const std::string group(base_name + name + '/');
+
+  // Special handling for "Modifier" button "Range" settings which default to 50% instead of 100%.
+  if (const auto* modifier_input = GetModifierInput())
+  {
+    section->Get(group + modifier_input->name + "/Range", &modifier_input->control_ref->range,
+                 50.0);
+    modifier_input->control_ref->range /= 100;
+  }
+
   std::string load_str;
   section->Get(group + CALIBRATION_CONFIG_NAME, &load_str, "");
   const auto load_data = SplitString(load_str, ' ');
@@ -270,8 +269,8 @@ void ReshapableInput::LoadConfig(IniFile::Section* section, const std::string& d
   }
 }
 
-void ReshapableInput::SaveConfig(IniFile::Section* section, const std::string& default_device,
-                                 const std::string& base_name)
+void ReshapableInput::SaveConfig(Common::IniFile::Section* section,
+                                 const std::string& default_device, const std::string& base_name)
 {
   ControlGroup::SaveConfig(section, default_device, base_name);
 
@@ -290,31 +289,40 @@ void ReshapableInput::SaveConfig(IniFile::Section* section, const std::string& d
 }
 
 ReshapableInput::ReshapeData ReshapableInput::Reshape(ControlState x, ControlState y,
-                                                      ControlState modifier)
+                                                      ControlState modifier,
+                                                      ControlState clamp) const
 {
   x -= m_center.x;
   y -= m_center.y;
 
-  // TODO: make the AtAngle functions work with negative angles:
-  const ControlState angle = std::atan2(y, x) + MathUtil::TAU;
+  // We run this even if both x and y will be zero.
+  // In that case, std::atan2(0, 0) returns a valid non-NaN value, but the exact value
+  // (which depends on the signs of x and y) does not matter here as dist is zero
 
-  const ControlState gate_max_dist = GetGateRadiusAtAngle(angle);
+  // TODO: make the AtAngle functions work with negative angles:
+  ControlState angle = std::atan2(y, x) + MathUtil::TAU;
+
   const ControlState input_max_dist = GetInputRadiusAtAngle(angle);
+  ControlState gate_max_dist = GetGateRadiusAtAngle(angle);
 
   // If input radius (from calibration) is zero apply no scaling to prevent division by zero.
   const ControlState max_dist = input_max_dist ? input_max_dist : gate_max_dist;
 
   ControlState dist = Common::DVec2{x, y}.Length() / max_dist;
 
+  const double virtual_notch_size = GetVirtualNotchSize();
+
+  if (virtual_notch_size > 0.0 && dist >= MINIMUM_NOTCH_DISTANCE)
+  {
+    angle = GetNearestNotch(angle, virtual_notch_size);
+    gate_max_dist = GetGateRadiusAtAngle(angle);
+  }
+
   // If the modifier is pressed, scale the distance by the modifier's value.
   // This is affected by the modifier's "range" setting which defaults to 50%.
   if (modifier)
   {
-    // TODO: Modifier's range setting gets reset to 100% when the clear button is clicked.
-    // This causes the modifier to not behave how a user might suspect.
-    // Retaining the old scale-by-50% behavior until range is fixed to clear to 50%.
-    dist *= 0.5;
-    // dist *= modifier;
+    dist *= modifier;
   }
 
   // Apply deadzone as a percentage of the user-defined calibration shape/size:
@@ -323,8 +331,13 @@ ReshapableInput::ReshapeData ReshapableInput::Reshape(ControlState x, ControlSta
   // Scale to the gate shape/radius:
   dist *= gate_max_dist;
 
-  return {std::clamp(std::cos(angle) * dist, -1.0, 1.0),
-          std::clamp(std::sin(angle) * dist, -1.0, 1.0)};
+  return {std::clamp(std::cos(angle) * dist, -clamp, clamp),
+          std::clamp(std::sin(angle) * dist, -clamp, clamp)};
+}
+
+Control* ReshapableInput::GetModifierInput() const
+{
+  return nullptr;
 }
 
 }  // namespace ControllerEmu

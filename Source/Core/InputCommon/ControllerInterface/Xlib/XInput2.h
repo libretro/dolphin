@@ -1,10 +1,11 @@
 // Copyright 2013 Max Eliaser
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 // See XInput2.cpp for extensive documentation.
 
 #pragma once
+
+#include <array>
 
 extern "C" {
 #include <X11/Xlib.h>
@@ -12,6 +13,7 @@ extern "C" {
 #include <X11/keysym.h>
 }
 
+#include "Common/CommonTypes.h"
 #include "Common/Matrix.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
@@ -24,10 +26,11 @@ class KeyboardMouse : public Core::Device
 private:
   struct State
   {
-    char keyboard[32];
-    unsigned int buttons;
+    std::array<char, 32> keyboard;
+    u32 buttons;
     Common::Vec2 cursor;
-    Common::Vec2 axis;
+    Common::Vec3 axis;
+    Common::Vec3 relative_mouse;
   };
 
   class Key : public Input
@@ -50,11 +53,11 @@ private:
   {
   public:
     std::string GetName() const override { return name; }
-    Button(unsigned int index, unsigned int* buttons);
+    Button(unsigned int index, u32* buttons);
     ControlState GetState() const override;
 
   private:
-    const unsigned int* m_buttons;
+    const u32* m_buttons;
     const unsigned int m_index;
     std::string name;
   };
@@ -89,14 +92,29 @@ private:
     std::string name;
   };
 
+  class RelativeMouse : public Input
+  {
+  public:
+    std::string GetName() const override { return name; }
+    bool IsDetectable() const override { return false; }
+    RelativeMouse(u8 index, bool positive, const float* axis);
+    ControlState GetState() const override;
+
+  private:
+    const float* m_axis;
+    const u8 m_index;
+    const bool m_positive;
+    std::string name;
+  };
+
 private:
-  void SelectEventsForDevice(Window window, XIEventMask* mask, int deviceid);
-  void UpdateCursor();
+  void UpdateCursor(bool should_center_mouse);
 
 public:
   void UpdateInput() override;
 
-  KeyboardMouse(Window window, int opcode, int pointer_deviceid, int keyboard_deviceid);
+  KeyboardMouse(Window window, int opcode, int pointer_deviceid, int keyboard_deviceid,
+                double scroll_increment);
   ~KeyboardMouse();
 
   std::string GetName() const override;
@@ -106,8 +124,10 @@ private:
   Window m_window;
   Display* m_display;
   State m_state{};
-  int xi_opcode;
-  const int pointer_deviceid, keyboard_deviceid;
+  const int xi_opcode;
+  const int pointer_deviceid;
+  const int keyboard_deviceid;
+  const double scroll_increment;
   std::string name;
 };
 }  // namespace ciface::XInput2

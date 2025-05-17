@@ -1,6 +1,7 @@
 // Copyright 2009 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "Common/SymbolDB.h"
 
 #include <cstring>
 #include <map>
@@ -9,7 +10,6 @@
 
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
-#include "Common/SymbolDB.h"
 
 namespace Common
 {
@@ -36,10 +36,10 @@ void SymbolDB::List()
 {
   for (const auto& func : m_functions)
   {
-    DEBUG_LOG(OSHLE, "%s @ %08x: %i bytes (hash %08x) : %i calls", func.second.name.c_str(),
-              func.second.address, func.second.size, func.second.hash, func.second.num_calls);
+    DEBUG_LOG_FMT(OSHLE, "{} @ {:08x}: {} bytes (hash {:08x}) : {} calls", func.second.name,
+                  func.second.address, func.second.size, func.second.hash, func.second.num_calls);
   }
-  INFO_LOG(OSHLE, "%zu functions known in this program above.", m_functions.size());
+  INFO_LOG_FMT(OSHLE, "{} functions known in this program above.", m_functions.size());
 }
 
 bool SymbolDB::IsEmpty() const

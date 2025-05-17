@@ -1,54 +1,59 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/PowerPC/PPCSymbolDB.h"
 
 #include <algorithm>
 #include <cstring>
 #include <map>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include <fmt/format.h>
+
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
+#include "Common/IOFile.h"
 #include "Common/Logging/Log.h"
 #include "Common/StringUtil.h"
+#include "Core/Core.h"
+#include "Core/Debugger/DebugInterface.h"
 #include "Core/PowerPC/MMU.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/PowerPC/SignatureDB/SignatureDB.h"
+#include "Core/System.h"
 
 PPCSymbolDB g_symbolDB;
 
-PPCSymbolDB::PPCSymbolDB() : debugger{&PowerPC::debug_interface}
+PPCSymbolDB::PPCSymbolDB() : debugger{&Core::System::GetInstance().GetPowerPC().GetDebugInterface()}
 {
 }
 
 PPCSymbolDB::~PPCSymbolDB() = default;
 
 // Adds the function to the list, unless it's already there
-Common::Symbol* PPCSymbolDB::AddFunction(u32 start_addr)
+Common::Symbol* PPCSymbolDB::AddFunction(const Core::CPUThreadGuard& guard, u32 start_addr)
 {
   // It's already in the list
   if (m_functions.find(start_addr) != m_functions.end())
     return nullptr;
 
   Common::Symbol symbol;
-  if (!PPCAnalyst::AnalyzeFunction(start_addr, symbol))
+  if (!PPCAnalyst::AnalyzeFunction(guard, start_addr, symbol))
     return nullptr;
 
-  m_functions[start_addr] = std::move(symbol);
-  Common::Symbol* ptr = &m_functions[start_addr];
+  const auto insert = m_functions.emplace(start_addr, std::move(symbol));
+  Common::Symbol* ptr = &insert.first->second;
   ptr->type = Common::Symbol::Type::Function;
   m_checksum_to_function[ptr->hash].insert(ptr);
   return ptr;
 }
 
-void PPCSymbolDB::AddKnownSymbol(u32 startAddr, u32 size, const std::string& name,
-                                 Common::Symbol::Type type)
+void PPCSymbolDB::AddKnownSymbol(const Core::CPUThreadGuard& guard, u32 startAddr, u32 size,
+                                 const std::string& name, Common::Symbol::Type type)
 {
   auto iter = m_functions.find(startAddr);
   if (iter != m_functions.end())
@@ -56,52 +61,53 @@ void PPCSymbolDB::AddKnownSymbol(u32 startAddr, u32 size, const std::string& nam
     // already got it, let's just update name, checksum & size to be sure.
     Common::Symbol* tempfunc = &iter->second;
     tempfunc->Rename(name);
-    tempfunc->hash = HashSignatureDB::ComputeCodeChecksum(startAddr, startAddr + size - 4);
+    tempfunc->hash = HashSignatureDB::ComputeCodeChecksum(guard, startAddr, startAddr + size - 4);
     tempfunc->type = type;
     tempfunc->size = size;
   }
   else
   {
     // new symbol. run analyze.
-    Common::Symbol tf;
-    tf.Rename(name);
-    tf.type = type;
-    tf.address = startAddr;
-    if (tf.type == Common::Symbol::Type::Function)
+    auto& new_symbol = m_functions.emplace(startAddr, name).first->second;
+    new_symbol.type = type;
+    new_symbol.address = startAddr;
+
+    if (new_symbol.type == Common::Symbol::Type::Function)
     {
-      PPCAnalyst::AnalyzeFunction(startAddr, tf, size);
+      PPCAnalyst::AnalyzeFunction(guard, startAddr, new_symbol, size);
       // Do not truncate symbol when a size is expected
-      if (size != 0 && tf.size != size)
+      if (size != 0 && new_symbol.size != size)
       {
-        WARN_LOG(SYMBOLS, "Analysed symbol (%s) size mismatch, %u expected but %u computed",
-                 name.c_str(), size, tf.size);
-        tf.size = size;
+        WARN_LOG_FMT(SYMBOLS, "Analysed symbol ({}) size mismatch, {} expected but {} computed",
+                     name, size, new_symbol.size);
+        new_symbol.size = size;
       }
-      m_checksum_to_function[tf.hash].insert(&m_functions[startAddr]);
+      m_checksum_to_function[new_symbol.hash].insert(&new_symbol);
     }
     else
     {
-      tf.size = size;
+      new_symbol.size = size;
     }
-    m_functions[startAddr] = tf;
   }
 }
 
 Common::Symbol* PPCSymbolDB::GetSymbolFromAddr(u32 addr)
 {
   auto it = m_functions.lower_bound(addr);
-  if (it == m_functions.end())
-    return nullptr;
 
-  // If the address is exactly the start address of a symbol, we're done.
-  if (it->second.address == addr)
-    return &it->second;
-
-  // Otherwise, check whether the address is within the bounds of a symbol.
+  if (it != m_functions.end())
+  {
+    // If the address is exactly the start address of a symbol, we're done.
+    if (it->second.address == addr)
+      return &it->second;
+  }
   if (it != m_functions.begin())
+  {
+    // Otherwise, check whether the address is within the bounds of a symbol.
     --it;
-  if (addr >= it->second.address && addr < it->second.address + it->second.size)
-    return &it->second;
+    if (addr >= it->second.address && addr < it->second.address + it->second.size)
+      return &it->second;
+  }
 
   return nullptr;
 }
@@ -151,18 +157,18 @@ void PPCSymbolDB::PrintCalls(u32 funcAddr) const
   const auto iter = m_functions.find(funcAddr);
   if (iter == m_functions.end())
   {
-    WARN_LOG(SYMBOLS, "Symbol does not exist");
+    WARN_LOG_FMT(SYMBOLS, "Symbol does not exist");
     return;
   }
 
   const Common::Symbol& f = iter->second;
-  DEBUG_LOG(SYMBOLS, "The function %s at %08x calls:", f.name.c_str(), f.address);
+  DEBUG_LOG_FMT(SYMBOLS, "The function {} at {:08x} calls:", f.name, f.address);
   for (const Common::SCall& call : f.calls)
   {
     const auto n = m_functions.find(call.function);
     if (n != m_functions.end())
     {
-      DEBUG_LOG(SYMBOLS, "* %08x : %s", call.call_address, n->second.name.c_str());
+      DEBUG_LOG_FMT(SYMBOLS, "* {:08x} : {}", call.call_address, n->second.name);
     }
   }
 }
@@ -174,13 +180,13 @@ void PPCSymbolDB::PrintCallers(u32 funcAddr) const
     return;
 
   const Common::Symbol& f = iter->second;
-  DEBUG_LOG(SYMBOLS, "The function %s at %08x is called by:", f.name.c_str(), f.address);
+  DEBUG_LOG_FMT(SYMBOLS, "The function {} at {:08x} is called by:", f.name, f.address);
   for (const Common::SCall& caller : f.callers)
   {
     const auto n = m_functions.find(caller.function);
     if (n != m_functions.end())
     {
-      DEBUG_LOG(SYMBOLS, "* %08x : %s", caller.call_address, n->second.name.c_str());
+      DEBUG_LOG_FMT(SYMBOLS, "* {:08x} : {}", caller.call_address, n->second.name);
     }
   }
 }
@@ -220,7 +226,7 @@ void PPCSymbolDB::LogFunctionCall(u32 addr)
 // This one can load both leftover map files on game discs (like Zelda), and mapfiles
 // produced by SaveSymbolMap below.
 // bad=true means carefully load map files that might not be from exactly the right version
-bool PPCSymbolDB::LoadMap(const std::string& filename, bool bad)
+bool PPCSymbolDB::LoadMap(const Core::CPUThreadGuard& guard, const std::string& filename, bool bad)
 {
   File::IOFile f(filename, "r");
   if (!f)
@@ -241,20 +247,14 @@ bool PPCSymbolDB::LoadMap(const std::string& filename, bool bad)
     if (length < 4)
       continue;
 
-    if (length == 34 && strcmp(line, "  address  Size   address  offset\n") == 0)
-    {
-      column_count = 4;
-      continue;
-    }
-
-    char temp[256];
+    char temp[256]{};
     sscanf(line, "%255s", temp);
 
     if (strcmp(temp, "UNUSED") == 0)
       continue;
 
     // Support CodeWarrior and Dolphin map
-    if (StringEndsWith(line, " section layout\n") || strcmp(temp, ".text") == 0 ||
+    if (std::string_view{line}.ends_with(" section layout\n") || strcmp(temp, ".text") == 0 ||
         strcmp(temp, ".init") == 0)
     {
       section_name = temp;
@@ -286,7 +286,7 @@ bool PPCSymbolDB::LoadMap(const std::string& filename, bool bad)
     //    3] _stack_addr found as linker generated symbol
     // ...
     //           10] EXILock(func, global) found in exi.a EXIBios.c
-    if (StringEndsWith(temp, "]"))
+    if (std::string_view{temp}.ends_with(']'))
       continue;
 
     // TODO - Handle/Write a parser for:
@@ -296,14 +296,38 @@ bool PPCSymbolDB::LoadMap(const std::string& filename, bool bad)
     if (section_name.empty())
       continue;
 
-    // Detect two columns with three columns fallback
+    // Column detection heuristic
     if (column_count == 0)
     {
-      const std::string_view stripped_line = StripSpaces(line);
-      if (std::count(stripped_line.begin(), stripped_line.end(), ' ') == 1)
-        column_count = 2;
-      else
+      constexpr auto is_hex_str = [](const std::string& s) {
+        return !s.empty() && s.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos;
+      };
+      const std::string stripped_line(StripWhitespace(line));
+      std::istringstream iss(stripped_line);
+      iss.imbue(std::locale::classic());
+      std::string word;
+
+      // Two columns format:
+      // 80004000 zz_80004000_
+      if (!(iss >> word) || word.length() != 8 || !is_hex_str(word))
+        continue;
+      column_count = 2;
+
+      // Three columns format:
+      //  Starting        Virtual
+      //  address  Size   address
+      //  -----------------------
+      if (iss && iss >> word && is_hex_str(word) && iss >> word && is_hex_str(word))
         column_count = 3;
+      else
+        iss.str("");
+
+      // Four columns format:
+      //  Starting        Virtual  File
+      //  address  Size   address  offset
+      //  ---------------------------------
+      if (iss && iss >> word && word.length() == 8 && is_hex_str(word))
+        column_count = 4;
     }
 
     u32 address, vaddress, size, offset, alignment;
@@ -385,26 +409,27 @@ bool PPCSymbolDB::LoadMap(const std::string& filename, bool bad)
     if (strlen(name) > 0)
     {
       // Can't compute the checksum if not in RAM
-      bool good = !bad && PowerPC::HostIsInstructionRAMAddress(vaddress) &&
-                  PowerPC::HostIsInstructionRAMAddress(vaddress + size - 4);
+      bool good = !bad && PowerPC::MMU::HostIsInstructionRAMAddress(guard, vaddress) &&
+                  PowerPC::MMU::HostIsInstructionRAMAddress(guard, vaddress + size - 4);
       if (!good)
       {
         // check for BLR before function
-        PowerPC::TryReadInstResult read_result = PowerPC::TryReadInstruction(vaddress - 4);
+        PowerPC::TryReadInstResult read_result =
+            guard.GetSystem().GetMMU().TryReadInstruction(vaddress - 4);
         if (read_result.valid && read_result.hex == 0x4e800020)
         {
           // check for BLR at end of function
-          read_result = PowerPC::TryReadInstruction(vaddress + size - 4);
+          read_result = guard.GetSystem().GetMMU().TryReadInstruction(vaddress + size - 4);
           good = read_result.valid && read_result.hex == 0x4e800020;
         }
       }
       if (good)
       {
         ++good_count;
-        if (section_name == ".text" || section_name == ".init")
-          AddKnownSymbol(vaddress, size, name, Common::Symbol::Type::Function);
-        else
-          AddKnownSymbol(vaddress, size, name, Common::Symbol::Type::Data);
+        const Common::Symbol::Type type = section_name == ".text" || section_name == ".init" ?
+                                              Common::Symbol::Type::Function :
+                                              Common::Symbol::Type::Data;
+        AddKnownSymbol(guard, vaddress, size, name, type);
       }
       else
       {
@@ -414,7 +439,7 @@ bool PPCSymbolDB::LoadMap(const std::string& filename, bool bad)
   }
 
   Index();
-  NOTICE_LOG(SYMBOLS, "%d symbols loaded, %d symbols ignored.", good_count, bad_count);
+  NOTICE_LOG_FMT(SYMBOLS, "{} symbols loaded, {} symbols ignored.", good_count, bad_count);
   return true;
 }
 
@@ -438,21 +463,21 @@ bool PPCSymbolDB::SaveSymbolMap(const std::string& filename) const
   }
 
   // Write .text section
-  fprintf(f.GetHandle(), ".text section layout\n");
+  f.WriteString(".text section layout\n");
   for (const auto& symbol : function_symbols)
   {
     // Write symbol address, size, virtual address, alignment, name
-    fprintf(f.GetHandle(), "%08x %08x %08x %i %s\n", symbol->address, symbol->size, symbol->address,
-            0, symbol->name.c_str());
+    f.WriteString(fmt::format("{0:08x} {1:08x} {2:08x} {3} {4}\n", symbol->address, symbol->size,
+                              symbol->address, 0, symbol->name));
   }
 
   // Write .data section
-  fprintf(f.GetHandle(), "\n.data section layout\n");
+  f.WriteString("\n.data section layout\n");
   for (const auto& symbol : data_symbols)
   {
     // Write symbol address, size, virtual address, alignment, name
-    fprintf(f.GetHandle(), "%08x %08x %08x %i %s\n", symbol->address, symbol->size, symbol->address,
-            0, symbol->name.c_str());
+    f.WriteString(fmt::format("{0:08x} {1:08x} {2:08x} {3} {4}\n", symbol->address, symbol->size,
+                              symbol->address, 0, symbol->name));
   }
 
   return true;
@@ -463,7 +488,7 @@ bool PPCSymbolDB::SaveSymbolMap(const std::string& filename) const
 // Notes:
 //  - Dolphin doesn't load back code maps
 //  - It's a custom code map format
-bool PPCSymbolDB::SaveCodeMap(const std::string& filename) const
+bool PPCSymbolDB::SaveCodeMap(const Core::CPUThreadGuard& guard, const std::string& filename) const
 {
   constexpr int SYMBOL_NAME_LIMIT = 30;
   File::IOFile f(filename, "w");
@@ -471,7 +496,7 @@ bool PPCSymbolDB::SaveCodeMap(const std::string& filename) const
     return false;
 
   // Write ".text" at the top
-  fprintf(f.GetHandle(), ".text\n");
+  f.WriteString(".text\n");
 
   u32 next_address = 0;
   for (const auto& function : m_functions)
@@ -482,20 +507,20 @@ bool PPCSymbolDB::SaveCodeMap(const std::string& filename) const
     if (symbol.address + symbol.size <= next_address)
     {
       // At least write the symbol name and address
-      fprintf(f.GetHandle(), "// %08x beginning of %s\n", symbol.address, symbol.name.c_str());
+      f.WriteString(fmt::format("// {0:08x} beginning of {1}\n", symbol.address, symbol.name));
       continue;
     }
 
     // Write the symbol full name
-    fprintf(f.GetHandle(), "\n%s:\n", symbol.name.c_str());
+    f.WriteString(fmt::format("\n{0}:\n", symbol.name));
     next_address = symbol.address + symbol.size;
 
     // Write the code
     for (u32 address = symbol.address; address < next_address; address += 4)
     {
-      const std::string disasm = debugger->Disassemble(address);
-      fprintf(f.GetHandle(), "%08x %-*.*s %s\n", address, SYMBOL_NAME_LIMIT, SYMBOL_NAME_LIMIT,
-              symbol.name.c_str(), disasm.c_str());
+      const std::string disasm = debugger->Disassemble(&guard, address);
+      f.WriteString(fmt::format("{0:08x} {1:<{2}.{3}} {4}\n", address, symbol.name,
+                                SYMBOL_NAME_LIMIT, SYMBOL_NAME_LIMIT, disasm));
     }
   }
   return true;

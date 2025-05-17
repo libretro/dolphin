@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -23,14 +22,16 @@ public:
   Create(const Volume& volume, const Partition& partition, std::string_view file_path);
 
   BlobType GetBlobType() const override { return BlobType::PLAIN; }
+  std::unique_ptr<BlobReader> CopyReader() const override;
 
   u64 GetRawSize() const override;
   u64 GetDataSize() const override;
-  bool IsDataSizeAccurate() const override { return true; }
+  DataSizeType GetDataSizeType() const override { return DataSizeType::Accurate; }
 
   u64 GetBlockSize() const override;
   bool HasFastRandomAccessInBlock() const override;
   std::string GetCompressionMethod() const override;
+  std::optional<int> GetCompressionLevel() const override;
 
   bool Read(u64 offset, u64 length, u8* out_ptr) override;
 

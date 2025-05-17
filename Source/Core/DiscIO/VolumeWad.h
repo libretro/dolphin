@@ -1,6 +1,5 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -65,10 +64,12 @@ public:
   Country GetCountry(const Partition& partition = PARTITION_NONE) const override;
 
   BlobType GetBlobType() const override;
-  u64 GetSize() const override;
-  bool IsSizeAccurate() const override;
+  u64 GetDataSize() const override;
+  DataSizeType GetDataSizeType() const override;
   u64 GetRawSize() const override;
   const BlobReader& GetBlobReader() const override;
+
+  std::array<u8, 20> GetSyncHash() const override;
 
 private:
   std::unique_ptr<BlobReader> m_reader;
@@ -85,6 +86,7 @@ private:
   u32 m_ticket_size = 0;
   u32 m_tmd_size = 0;
   u32 m_data_size = 0;
+  u32 m_opening_bnr_size = 0;
 };
 
 }  // namespace DiscIO

@@ -1,15 +1,11 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "UICommon/Disassembler.h"
 
 #include <sstream>
 
 #if defined(HAVE_LLVM)
-// PowerPC.h defines PC.
-// This conflicts with a function that has an argument named PC
-#undef PC
 #include <fmt/format.h>
 #include <llvm-c/Disassembler.h>
 #include <llvm-c/Target.h>
@@ -17,7 +13,10 @@
 #include <disasm.h>  // Bochs
 #endif
 
+#include "Common/Assert.h"
+#include "Common/VariantUtil.h"
 #include "Core/PowerPC/JitInterface.h"
+#include "Core/System.h"
 
 #if defined(HAVE_LLVM)
 class HostDisassemblerLLVM : public HostDisassembler
@@ -48,7 +47,8 @@ HostDisassemblerLLVM::HostDisassemblerLLVM(const std::string& host_disasm, int i
   LLVMInitializeAllTargetMCs();
   LLVMInitializeAllDisassemblers();
 
-  m_llvm_context = LLVMCreateDisasmCPU(host_disasm.c_str(), cpu.c_str(), nullptr, 0, 0, nullptr);
+  m_llvm_context =
+      LLVMCreateDisasmCPU(host_disasm.c_str(), cpu.c_str(), nullptr, 0, nullptr, nullptr);
 
   // Couldn't create llvm context
   if (!m_llvm_context)
@@ -170,21 +170,39 @@ std::unique_ptr<HostDisassembler> GetNewDisassembler(const std::string& arch)
   return std::make_unique<HostDisassembler>();
 }
 
-std::string DisassembleBlock(HostDisassembler* disasm, u32* address, u32* host_instructions_count,
-                             u32* code_size)
+DisassembleResult DisassembleBlock(HostDisassembler* disasm, u32 address)
 {
-  const u8* code;
-  int res = JitInterface::GetHostCode(address, &code, code_size);
+  auto res = Core::System::GetInstance().GetJitInterface().GetHostCode(address);
 
-  if (res == 1)
-  {
-    *host_instructions_count = 0;
-    return "(No JIT active)";
-  }
-  else if (res == 2)
-  {
-    *host_instructions_count = 0;
-    return "(No translation)";
-  }
-  return disasm->DisassembleHostBlock(code, *code_size, host_instructions_count, (u64)code);
+  return std::visit(overloaded{[&](JitInterface::GetHostCodeError error) {
+                                 DisassembleResult result;
+                                 switch (error)
+                                 {
+                                 case JitInterface::GetHostCodeError::NoJitActive:
+                                   result.text = "(No JIT active)";
+                                   break;
+                                 case JitInterface::GetHostCodeError::NoTranslation:
+                                   result.text = "(No translation)";
+                                   break;
+                                 default:
+                                   ASSERT(false);
+                                   break;
+                                 }
+                                 result.entry_address = address;
+                                 result.instruction_count = 0;
+                                 result.code_size = 0;
+                                 return result;
+                               },
+                               [&](JitInterface::GetHostCodeResult host_result) {
+                                 DisassembleResult new_result;
+                                 u32 instruction_count = 0;
+                                 new_result.text = disasm->DisassembleHostBlock(
+                                     host_result.code, host_result.code_size, &instruction_count,
+                                     (u64)host_result.code);
+                                 new_result.entry_address = host_result.entry_address;
+                                 new_result.code_size = host_result.code_size;
+                                 new_result.instruction_count = instruction_count;
+                                 return new_result;
+                               }},
+                    res);
 }

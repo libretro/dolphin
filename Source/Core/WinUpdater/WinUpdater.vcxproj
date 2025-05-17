@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project>
   <Import Project="..\..\VSProps\Base.Macros.props" />
   <Import Project="$(VSPropsDir)Base.Targets.props" />
   <PropertyGroup Label="Globals">
@@ -12,29 +12,35 @@
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="$(VSPropsDir)Base.props" />
+    <Import Project="$(VSPropsDir)Base.Dolphin.props" />
     <Import Project="$(VSPropsDir)PCHUse.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <TargetName>Updater</TargetName>
   </PropertyGroup>
-  <ItemDefinitionGroup>
-    <Link>
-      <AdditionalDependencies>iphlpapi.lib;winmm.lib;ws2_32.lib;comctl32.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
-  </ItemDefinitionGroup>
   <ItemGroup>
-    <ProjectReference Include="$(CoreDir)Common\Common.vcxproj">
-      <Project>{2e6c348c-c75c-4d94-8d1e-9c1fcbf3efe4}</Project>
-    </ProjectReference>
-    <ProjectReference Include="$(CoreDir)UpdaterCommon\UpdaterCommon.vcxproj">
-      <Project>{B001D13E-7EAB-4689-842D-801E5ACFFAC5}</Project>
+    <ProjectReference Include="$(CoreDir)DolphinLib.vcxproj">
+      <Project>{D79392F7-06D6-4B4B-A39F-4D587C215D3A}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\UpdaterCommon\Platform.h" />
+    <ClInclude Include="..\UpdaterCommon\UI.h" />
+    <ClInclude Include="..\UpdaterCommon\UpdaterCommon.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\UpdaterCommon\UpdaterCommon.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="Platform.cpp" />
     <ClCompile Include="WinUI.cpp" />
   </ItemGroup>
+  <Import Project="$(ExternalsDir)cpp-optparse\exports.props" />
+  <Import Project="$(ExternalsDir)curl\exports.props" />
+  <Import Project="$(ExternalsDir)ed25519\exports.props" />
+  <Import Project="$(ExternalsDir)fmt\exports.props" />
+  <Import Project="$(ExternalsDir)mbedtls\exports.props" />
+  <Import Project="$(ExternalsDir)zlib-ng\exports.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

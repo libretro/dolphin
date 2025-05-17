@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -8,6 +7,7 @@
 
 #include <QWidget>
 
+class ConfigBool;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -32,7 +32,9 @@ private:
   void Update();
 
   QComboBox* m_cpu_emulation_engine_combobox;
-  QCheckBox* m_enable_mmu_checkbox;
+  ConfigBool* m_enable_mmu_checkbox;
+  ConfigBool* m_pause_on_panic_checkbox;
+  ConfigBool* m_accurate_cpu_cache_checkbox;
   QCheckBox* m_cpu_clock_override_checkbox;
   QSlider* m_cpu_clock_override_slider;
   QLabel* m_cpu_clock_override_slider_label;

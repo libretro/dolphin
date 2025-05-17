@@ -1,51 +1,73 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.utils;
 
-import android.content.Context;
-import android.content.IntentFilter;
+import androidx.lifecycle.LifecycleOwner;
+import androidx.lifecycle.Observer;
 
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import org.dolphinemu.dolphinemu.utils.DirectoryInitialization.DirectoryInitializationState;
 
 public class AfterDirectoryInitializationRunner
 {
-  private DirectoryStateReceiver directoryStateReceiver;
+  private Observer<DirectoryInitializationState> mObserver;
 
   /**
-   * Executes a Runnable after directory initialization has finished.
+   * Executes a Runnable once directory initialization finishes.
    *
-   * If this is called when directory initialization already is done,
-   * the Runnable will be executed immediately. If this is called before
-   * directory initialization is done, the Runnable will be executed
-   * after directory initialization finishes successfully, or never
-   * in case directory initialization doesn't finish successfully.
+   * If this is called when directory initialization already has finished, the Runnable will
+   * be executed immediately. If this is called before directory initialization has finished,
+   * the Runnable will be executed after directory initialization finishes.
    *
-   * Calling this function multiple times per object is not supported.
+   * If the passed-in LifecycleOwner gets destroyed before this operation finishes,
+   * the operation will be automatically canceled.
    */
-  public void run(Context context, Runnable runnable)
+  public void runWithLifecycle(LifecycleOwner lifecycleOwner, Runnable runnable)
   {
-    if (!DirectoryInitialization.areDolphinDirectoriesReady())
-    {
-      // Wait for directories to get initialized
-      IntentFilter statusIntentFilter = new IntentFilter(
-              DirectoryInitialization.BROADCAST_ACTION);
-
-      directoryStateReceiver = new DirectoryStateReceiver(directoryInitializationState ->
-      {
-        if (directoryInitializationState ==
-                DirectoryInitialization.DirectoryInitializationState.DOLPHIN_DIRECTORIES_INITIALIZED)
-        {
-          LocalBroadcastManager.getInstance(context).unregisterReceiver(directoryStateReceiver);
-          directoryStateReceiver = null;
-          runnable.run();
-        }
-      });
-      // Registers the DirectoryStateReceiver and its intent filters
-      LocalBroadcastManager.getInstance(context).registerReceiver(
-              directoryStateReceiver,
-              statusIntentFilter);
-    }
-    else
+    if (DirectoryInitialization.areDolphinDirectoriesReady())
     {
       runnable.run();
     }
+    else
+    {
+      mObserver = createObserver(runnable);
+      DirectoryInitialization.getDolphinDirectoriesState().observe(lifecycleOwner, mObserver);
+    }
+  }
+
+  /**
+   * Executes a Runnable once directory initialization finishes.
+   *
+   * If this is called when directory initialization already has finished, the Runnable will
+   * be executed immediately. If this is called before directory initialization has finished,
+   * the Runnable will be executed after directory initialization finishes.
+   */
+  public void runWithoutLifecycle(Runnable runnable)
+  {
+    if (DirectoryInitialization.areDolphinDirectoriesReady())
+    {
+      runnable.run();
+    }
+    else
+    {
+      mObserver = createObserver(runnable);
+      DirectoryInitialization.getDolphinDirectoriesState().observeForever(mObserver);
+    }
+  }
+
+  private Observer<DirectoryInitializationState> createObserver(Runnable runnable)
+  {
+    return (state) ->
+    {
+      if (state == DirectoryInitializationState.DOLPHIN_DIRECTORIES_INITIALIZED)
+      {
+        cancel();
+        runnable.run();
+      }
+    };
+  }
+
+  public void cancel()
+  {
+    DirectoryInitialization.getDolphinDirectoriesState().removeObserver(mObserver);
   }
 }

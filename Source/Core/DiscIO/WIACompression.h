@@ -1,6 +1,5 @@
 // Copyright 2020 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -11,10 +10,10 @@
 
 #include <bzlib.h>
 #include <lzma.h>
-#include <mbedtls/sha1.h>
 #include <zstd.h>
 
 #include "Common/CommonTypes.h"
+#include "Common/Crypto/SHA1.h"
 #include "DiscIO/LaggedFibonacciGenerator.h"
 
 namespace DiscIO
@@ -24,8 +23,6 @@ struct DecompressionBuffer
   std::vector<u8> data;
   size_t bytes_written = 0;
 };
-
-using SHA1 = std::array<u8, 20>;
 
 struct PurgeSegment
 {
@@ -72,7 +69,7 @@ private:
   size_t m_out_bytes_written = 0;
   bool m_started = false;
 
-  mbedtls_sha1_context m_sha1_context;
+  std::unique_ptr<Common::SHA1::Context> m_sha1_context;
 };
 
 class Bzip2Decompressor final : public Decompressor
@@ -142,7 +139,7 @@ private:
   u32 m_rvz_packed_size;
 
   u32 m_size = 0;
-  bool m_junk;
+  bool m_junk = false;
   LaggedFibonacciGenerator m_lfg;
 };
 
@@ -154,7 +151,7 @@ public:
   // First call Start, then AddDataOnlyForPurgeHashing/Compress any number of times,
   // then End, then GetData/GetSize any number of times.
 
-  virtual bool Start() = 0;
+  virtual bool Start(std::optional<u64> size) = 0;
   virtual bool AddPrecedingDataOnlyForPurgeHashing(const u8* data, size_t size) { return true; }
   virtual bool Compress(const u8* data, size_t size) = 0;
   virtual bool End() = 0;
@@ -169,7 +166,7 @@ public:
   PurgeCompressor();
   ~PurgeCompressor();
 
-  bool Start() override;
+  bool Start(std::optional<u64> size) override;
   bool AddPrecedingDataOnlyForPurgeHashing(const u8* data, size_t size) override;
   bool Compress(const u8* data, size_t size) override;
   bool End() override;
@@ -179,8 +176,8 @@ public:
 
 private:
   std::vector<u8> m_buffer;
-  size_t m_bytes_written;
-  mbedtls_sha1_context m_sha1_context;
+  size_t m_bytes_written = 0;
+  std::unique_ptr<Common::SHA1::Context> m_sha1_context;
 };
 
 class Bzip2Compressor final : public Compressor
@@ -189,7 +186,7 @@ public:
   Bzip2Compressor(int compression_level);
   ~Bzip2Compressor();
 
-  bool Start() override;
+  bool Start(std::optional<u64> size) override;
   bool Compress(const u8* data, size_t size) override;
   bool End() override;
 
@@ -211,7 +208,7 @@ public:
                  u8* compressor_data_size_out);
   ~LZMACompressor();
 
-  bool Start() override;
+  bool Start(std::optional<u64> size) override;
   bool Compress(const u8* data, size_t size) override;
   bool End() override;
 
@@ -234,7 +231,7 @@ public:
   ZstdCompressor(int compression_level);
   ~ZstdCompressor();
 
-  bool Start() override;
+  bool Start(std::optional<u64> size) override;
   bool Compress(const u8* data, size_t size) override;
   bool End() override;
 
@@ -245,7 +242,7 @@ private:
   void ExpandBuffer(size_t bytes_to_add);
 
   ZSTD_CStream* m_stream;
-  ZSTD_outBuffer m_out_buffer;
+  ZSTD_outBuffer m_out_buffer{};
   std::vector<u8> m_buffer;
 };
 

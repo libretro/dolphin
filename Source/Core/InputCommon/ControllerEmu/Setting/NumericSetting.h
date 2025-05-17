@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -10,7 +9,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/IniFile.h"
 #include "InputCommon/ControlReference/ControlReference.h"
-#include "InputCommon/ControllerInterface/Device.h"
+#include "InputCommon/ControllerInterface/CoreDevice.h"
 
 namespace ControllerEmu
 {
@@ -21,13 +20,20 @@ enum class SettingType
   Bool,
 };
 
+enum class SettingVisibility
+{
+  Normal,
+  Advanced,
+};
+
 struct NumericSettingDetails
 {
   NumericSettingDetails(const char* const _ini_name, const char* const _ui_suffix = nullptr,
                         const char* const _ui_description = nullptr,
-                        const char* const _ui_name = nullptr)
+                        const char* const _ui_name = nullptr,
+                        SettingVisibility _visibility = SettingVisibility::Normal)
       : ini_name(_ini_name), ui_suffix(_ui_suffix), ui_description(_ui_description),
-        ui_name(_ui_name ? _ui_name : _ini_name)
+        ui_name(_ui_name ? _ui_name : _ini_name), visibility(_visibility)
   {
   }
 
@@ -42,6 +48,9 @@ struct NumericSettingDetails
 
   // The name used in the UI (if different from ini file).
   const char* const ui_name;
+
+  // Advanced settings should be harder to change in the UI. They might confuse users.
+  const SettingVisibility visibility;
 };
 
 class NumericSettingBase
@@ -51,8 +60,10 @@ public:
 
   virtual ~NumericSettingBase() = default;
 
-  virtual void LoadFromIni(const IniFile::Section& section, const std::string& group_name) = 0;
-  virtual void SaveToIni(IniFile::Section& section, const std::string& group_name) const = 0;
+  virtual void LoadFromIni(const Common::IniFile::Section& section,
+                           const std::string& group_name) = 0;
+  virtual void SaveToIni(Common::IniFile::Section& section,
+                         const std::string& group_name) const = 0;
 
   virtual InputReference& GetInputReference() = 0;
   virtual const InputReference& GetInputReference() const = 0;
@@ -67,9 +78,13 @@ public:
 
   virtual SettingType GetType() const = 0;
 
+  virtual void SetToDefault() = 0;
+
+  const char* GetININame() const;
   const char* GetUIName() const;
   const char* GetUISuffix() const;
   const char* GetUIDescription() const;
+  SettingVisibility GetVisibility() const;
 
 protected:
   NumericSettingDetails m_details;
@@ -93,10 +108,12 @@ public:
       : NumericSettingBase(details), m_value(*value), m_default_value(default_value),
         m_min_value(min_value), m_max_value(max_value)
   {
-    m_value.SetValue(m_default_value);
+    SetToDefault();
   }
 
-  void LoadFromIni(const IniFile::Section& section, const std::string& group_name) override
+  void SetToDefault() override { m_value.SetValue(m_default_value); }
+
+  void LoadFromIni(const Common::IniFile::Section& section, const std::string& group_name) override
   {
     std::string str_value;
     if (section.Get(group_name + m_details.ini_name, &str_value))
@@ -110,12 +127,19 @@ public:
     }
   }
 
-  void SaveToIni(IniFile::Section& section, const std::string& group_name) const override
+  void SaveToIni(Common::IniFile::Section& section, const std::string& group_name) const override
   {
     if (IsSimpleValue())
+    {
       section.Set(group_name + m_details.ini_name, GetValue(), m_default_value);
+    }
     else
-      section.Set(group_name + m_details.ini_name, m_value.m_input.GetExpression(), "");
+    {
+      // We can't save line breaks in a single line config. Restoring them is too complicated.
+      std::string expression = m_value.m_input.GetExpression();
+      ReplaceBreaksWithSpaces(expression);
+      section.Set(group_name + m_details.ini_name, expression, "");
+    }
   }
 
   bool IsSimpleValue() const override { return m_value.IsSimpleValue(); }

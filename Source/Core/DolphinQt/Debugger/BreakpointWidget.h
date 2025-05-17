@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,6 +12,10 @@ class QCloseEvent;
 class QShowEvent;
 class QTableWidget;
 class QToolBar;
+namespace Core
+{
+class System;
+}
 
 class BreakpointWidget : public QDockWidget
 {
@@ -22,17 +25,18 @@ public:
   ~BreakpointWidget();
 
   void AddBP(u32 addr);
-  void AddBP(u32 addr, bool temp, bool break_on_hit, bool log_on_hit);
+  void AddBP(u32 addr, bool temp, bool break_on_hit, bool log_on_hit, const QString& condition);
   void AddAddressMBP(u32 addr, bool on_read = true, bool on_write = true, bool do_log = true,
-                     bool do_break = true);
+                     bool do_break = true, const QString& condition = {});
   void AddRangedMBP(u32 from, u32 to, bool do_read = true, bool do_write = true, bool do_log = true,
-                    bool do_break = true);
+                    bool do_break = true, const QString& condition = {});
   void UpdateButtonsEnabled();
   void Update();
 
 signals:
   void BreakpointsChanged();
-  void SelectedBreakpoint(u32 address);
+  void ShowCode(u32 address);
+  void ShowMemory(u32 address);
 
 protected:
   void closeEvent(QCloseEvent*) override;
@@ -44,10 +48,14 @@ private:
   void OnDelete();
   void OnClear();
   void OnNewBreakpoint();
+  void OnEditBreakpoint(u32 address, bool is_instruction_bp);
   void OnLoad();
   void OnSave();
+  void OnContextMenu();
 
   void UpdateIcons();
+
+  Core::System& m_system;
 
   QToolBar* m_toolbar;
   QTableWidget* m_table;

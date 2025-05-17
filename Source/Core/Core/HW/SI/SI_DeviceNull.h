@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -13,7 +12,7 @@ namespace SerialInterface
 class CSIDevice_Null final : public ISIDevice
 {
 public:
-  CSIDevice_Null(SIDevices device, int device_number);
+  CSIDevice_Null(Core::System& system, SIDevices device, int device_number);
 
   int RunBuffer(u8* buffer, int request_length) override;
   bool GetData(u32& hi, u32& low) override;

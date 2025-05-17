@@ -1,6 +1,5 @@
 // Copyright 2014 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -18,10 +17,9 @@ class PointerWrap;
 class MemoryCard : public MemoryCardBase
 {
 public:
-  MemoryCard(const std::string& filename, int card_index,
+  MemoryCard(const std::string& filename, ExpansionInterface::Slot card_slot,
              u16 size_mbits = Memcard::MBIT_SIZE_MEMORY_CARD_2043);
   ~MemoryCard();
-  static void CheckPath(std::string& memcardPath, const std::string& gameRegion, bool isSlotA);
   void FlushThread();
   void MakeDirty();
 
@@ -32,6 +30,12 @@ public:
   void DoState(PointerWrap& p) override;
 
 private:
+  bool IsAddressInBounds(u32 address, u32 length) const
+  {
+    u64 end_address = static_cast<u64>(address) + static_cast<u64>(length);
+    return end_address <= static_cast<u64>(m_memory_card_size);
+  }
+
   std::string m_filename;
   std::unique_ptr<u8[]> m_memcard_data;
   std::unique_ptr<u8[]> m_flush_buffer;
@@ -39,4 +43,5 @@ private:
   std::mutex m_flush_mutex;
   Common::Event m_flush_trigger;
   Common::Flag m_dirty;
+  u32 m_memory_card_size;
 };

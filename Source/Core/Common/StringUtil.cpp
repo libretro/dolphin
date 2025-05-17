@@ -1,10 +1,11 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/StringUtil.h"
 
 #include <algorithm>
+#include <array>
+#include <codecvt>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
@@ -30,16 +31,20 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <shellapi.h>
 constexpr u32 CODEPAGE_SHIFT_JIS = 932;
 constexpr u32 CODEPAGE_WINDOWS_1252 = 1252;
 #else
-#include <codecvt>
+#if defined(__NetBSD__)
+#define LIBICONV_PLUG
+#endif
 #include <errno.h>
 #include <iconv.h>
 #include <locale.h>
 #endif
 
-#if !defined(_WIN32) && !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__)
+#if !defined(_WIN32) && !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__) &&       \
+    !defined(__NetBSD__)
 static locale_t GetCLocale()
 {
   static locale_t c_locale = newlocale(LC_ALL_MASK, "C", nullptr);
@@ -72,31 +77,12 @@ std::string HexDump(const u8* data, size_t size)
       if (row_start + i < size)
       {
         char c = static_cast<char>(data[row_start + i]);
-        out += IsPrintableCharacter(c) ? c : '.';
+        out += Common::IsPrintableCharacter(c) ? c : '.';
       }
     }
     out += "\n";
   }
   return out;
-}
-
-// faster than sscanf
-bool AsciiToHex(const std::string& _szValue, u32& result)
-{
-  // Set errno to a good state.
-  errno = 0;
-
-  char* endptr = nullptr;
-  const u32 value = strtoul(_szValue.c_str(), &endptr, 16);
-
-  if (!endptr || *endptr)
-    return false;
-
-  if (errno == ERANGE)
-    return false;
-
-  result = value;
-  return true;
 }
 
 bool CharArrayFromFormatV(char* out, int outsize, const char* format, va_list args)
@@ -132,11 +118,11 @@ bool CharArrayFromFormatV(char* out, int outsize, const char* format, va_list ar
     c_locale = _create_locale(LC_ALL, "C");
   writtenCount = _vsnprintf_l(out, outsize, format, c_locale, args);
 #else
-#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__)
+#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__) && !defined(__NetBSD__)
   locale_t previousLocale = uselocale(GetCLocale());
 #endif
   writtenCount = vsnprintf(out, outsize, format, args);
-#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__)
+#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__) && !defined(__NetBSD__)
   uselocale(previousLocale);
 #endif
 #endif
@@ -173,16 +159,16 @@ std::string StringFromFormatV(const char* format, va_list args)
   std::string temp = buf;
   delete[] buf;
 #else
-#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__)
+#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__) && !defined(__NetBSD__)
   locale_t previousLocale = uselocale(GetCLocale());
 #endif
   if (vasprintf(&buf, format, args) < 0)
   {
-    ERROR_LOG(COMMON, "Unable to allocate memory for string");
+    ERROR_LOG_FMT(COMMON, "Unable to allocate memory for string");
     buf = nullptr;
   }
 
-#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__)
+#if !defined(ANDROID) && !defined(__HAIKU__) && !defined(__OpenBSD__) && !defined(__NetBSD__)
   uselocale(previousLocale);
 #endif
 
@@ -214,26 +200,51 @@ std::string ArrayToString(const u8* data, u32 size, int line_len, bool spaces)
   return oss.str();
 }
 
-// Turns "  hello " into "hello". Also handles tabs.
-std::string_view StripSpaces(std::string_view str)
+template <typename T>
+static std::string_view StripEnclosingChars(std::string_view str, T chars)
 {
-  const size_t s = str.find_first_not_of(" \t\r\n");
+  const size_t s = str.find_first_not_of(chars);
 
   if (str.npos != s)
-    return str.substr(s, str.find_last_not_of(" \t\r\n") - s + 1);
+    return str.substr(s, str.find_last_not_of(chars) - s + 1);
   else
     return "";
 }
 
+// Turns "\n\r\t hello " into "hello" (trims at the start and end but not inside).
+std::string_view StripWhitespace(std::string_view str)
+{
+  return StripEnclosingChars(str, " \t\r\n");
+}
+
+std::string_view StripSpaces(std::string_view str)
+{
+  return StripEnclosingChars(str, ' ');
+}
+
 // "\"hello\"" is turned to "hello"
 // This one assumes that the string has already been space stripped in both
-// ends, as done by StripSpaces above, for example.
+// ends, as done by StripWhitespace above, for example.
 std::string_view StripQuotes(std::string_view s)
 {
   if (!s.empty() && '\"' == s[0] && '\"' == *s.rbegin())
     return s.substr(1, s.size() - 2);
   else
     return s;
+}
+
+// Turns "\n\rhello" into "  hello".
+void ReplaceBreaksWithSpaces(std::string& str)
+{
+  std::replace(str.begin(), str.end(), '\r', ' ');
+  std::replace(str.begin(), str.end(), '\n', ' ');
+}
+
+void TruncateToCString(std::string* s)
+{
+  const size_t terminator = s->find_first_of('\0');
+  if (terminator != s->npos)
+    s->resize(terminator);
 }
 
 bool TryParse(const std::string& str, bool* const output)
@@ -267,12 +278,12 @@ std::string ValueToString(u64 value)
 
 std::string ValueToString(float value)
 {
-  return fmt::format("{:#.9g}", value);
+  return fmt::format("{:#}", value);
 }
 
 std::string ValueToString(double value)
 {
-  return fmt::format("{:#.17g}", value);
+  return fmt::format("{:#}", value);
 }
 
 std::string ValueToString(int value)
@@ -323,24 +334,28 @@ bool SplitPath(std::string_view full_path, std::string* path, std::string* filen
   return true;
 }
 
+void UnifyPathSeparators(std::string& path)
+{
+#ifdef _WIN32
+  for (char& c : path)
+  {
+    if (c == '\\')
+      c = '/';
+  }
+#endif
+}
+
+std::string WithUnifiedPathSeparators(std::string path)
+{
+  UnifyPathSeparators(path);
+  return path;
+}
+
 std::string PathToFileName(std::string_view path)
 {
   std::string file_name, extension;
   SplitPath(path, nullptr, &file_name, &extension);
   return file_name + extension;
-}
-
-void BuildCompleteFilename(std::string& complete_filename, std::string_view path,
-                           std::string_view filename)
-{
-  complete_filename = path;
-
-  // check for seperator
-  if (DIR_SEP_CHR != *complete_filename.rbegin())
-    complete_filename += DIR_SEP_CHR;
-
-  // add the filename
-  complete_filename += filename;
 }
 
 std::vector<std::string> SplitString(const std::string& str, const char delim)
@@ -397,23 +412,13 @@ std::string ReplaceAll(std::string result, std::string_view src, std::string_vie
   return result;
 }
 
-bool StringBeginsWith(std::string_view str, std::string_view begin)
-{
-  return str.size() >= begin.size() && std::equal(begin.begin(), begin.end(), str.begin());
-}
-
-bool StringEndsWith(std::string_view str, std::string_view end)
-{
-  return str.size() >= end.size() && std::equal(end.rbegin(), end.rend(), str.rbegin());
-}
-
 void StringPopBackIf(std::string* s, char c)
 {
   if (!s->empty() && s->back() == c)
     s->pop_back();
 }
 
-size_t StringUTF8CodePointCount(const std::string& str)
+size_t StringUTF8CodePointCount(std::string_view str)
 {
   return str.size() -
          std::count_if(str.begin(), str.end(), [](char c) -> bool { return (c & 0xC0) == 0x80; });
@@ -441,24 +446,22 @@ std::wstring CPToUTF16(u32 code_page, std::string_view input)
 
 std::string UTF16ToCP(u32 code_page, std::wstring_view input)
 {
-  std::string output;
+  if (input.empty())
+    return {};
 
-  if (0 != input.size())
+  // "If cchWideChar [input buffer size] is set to 0, the function fails." -MSDN
+  auto const size = WideCharToMultiByte(code_page, 0, input.data(), static_cast<int>(input.size()),
+                                        nullptr, 0, nullptr, nullptr);
+
+  std::string output(size, '\0');
+
+  if (size != WideCharToMultiByte(code_page, 0, input.data(), static_cast<int>(input.size()),
+                                  output.data(), static_cast<int>(output.size()), nullptr, nullptr))
   {
-    // "If cchWideChar [input buffer size] is set to 0, the function fails." -MSDN
-    auto const size = WideCharToMultiByte(
-        code_page, 0, input.data(), static_cast<int>(input.size()), nullptr, 0, nullptr, nullptr);
-
-    output.resize(size);
-
-    if (size != WideCharToMultiByte(code_page, 0, input.data(), static_cast<int>(input.size()),
-                                    &output[0], static_cast<int>(output.size()), nullptr, nullptr))
-    {
-      const DWORD error_code = GetLastError();
-      ERROR_LOG(COMMON, "WideCharToMultiByte Error in String '%s': %lu",
-                std::wstring(input).c_str(), error_code);
-      output.clear();
-    }
+    const DWORD error_code = GetLastError();
+    ERROR_LOG_FMT(COMMON, "WideCharToMultiByte Error in String '{}': {}", WStringToUTF8(input),
+                  error_code);
+    return {};
   }
 
   return output;
@@ -507,7 +510,7 @@ std::string CodeTo(const char* tocode, const char* fromcode, std::basic_string_v
   iconv_t const conv_desc = iconv_open(tocode, fromcode);
   if ((iconv_t)-1 == conv_desc)
   {
-    ERROR_LOG(COMMON, "Iconv initialization failure [%s]: %s", fromcode, strerror(errno));
+    ERROR_LOG_FMT(COMMON, "Iconv initialization failure [{}]: {}", fromcode, strerror(errno));
   }
   else
   {
@@ -525,8 +528,13 @@ std::string CodeTo(const char* tocode, const char* fromcode, std::basic_string_v
     while (src_bytes != 0)
     {
       size_t const iconv_result =
-          iconv(conv_desc, (char**)(&src_buffer), &src_bytes, &dst_buffer, &dst_bytes);
-
+#if defined(__NetBSD__)
+          iconv(conv_desc, reinterpret_cast<const char**>(&src_buffer), &src_bytes, &dst_buffer,
+                &dst_bytes);
+#else
+          iconv(conv_desc, const_cast<char**>(reinterpret_cast<const char**>(&src_buffer)),
+                &src_bytes, &dst_buffer, &dst_bytes);
+#endif
       if ((size_t)-1 == iconv_result)
       {
         if (EILSEQ == errno || EINVAL == errno)
@@ -540,7 +548,7 @@ std::string CodeTo(const char* tocode, const char* fromcode, std::basic_string_v
         }
         else
         {
-          ERROR_LOG(COMMON, "iconv failure [%s]: %s", fromcode, strerror(errno));
+          ERROR_LOG_FMT(COMMON, "iconv failure [{}]: {}", fromcode, strerror(errno));
           break;
         }
       }
@@ -596,7 +604,6 @@ std::string UTF16BEToUTF8(const char16_t* str, size_t max_size)
 
 #endif
 
-#ifdef ANDROID
 std::string UTF16ToUTF8(std::u16string_view input)
 {
   std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
@@ -608,9 +615,7 @@ std::u16string UTF8ToUTF16(std::string_view input)
   std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
   return converter.from_bytes(input.data(), input.data() + input.size());
 }
-#endif
 
-#ifdef HAS_STD_FILESYSTEM
 // This is a replacement for path::u8path, which is deprecated starting with C++20.
 std::filesystem::path StringToPath(std::string_view path)
 {
@@ -631,4 +636,66 @@ std::string PathToString(const std::filesystem::path& path)
   return path.native();
 #endif
 }
+
+namespace Common
+{
+#ifdef _WIN32
+std::vector<std::string> CommandLineToUtf8Argv(const wchar_t* command_line)
+{
+  int nargs;
+  LPWSTR* tokenized = CommandLineToArgvW(command_line, &nargs);
+  if (!tokenized)
+    return {};
+
+  std::vector<std::string> argv(nargs);
+  for (size_t i = 0; i < nargs; ++i)
+  {
+    argv[i] = WStringToUTF8(tokenized[i]);
+  }
+
+  LocalFree(tokenized);
+  return argv;
+}
 #endif
+
+std::string GetEscapedHtml(std::string html)
+{
+  static constexpr std::array<std::array<const char*, 2>, 5> replacements{{
+      // Escape ampersand first to avoid escaping the ampersands in other replacements
+      {{"&", "&amp;"}},
+      {{"<", "&lt;"}},
+      {{">", "&gt;"}},
+      {{"\"", "&quot;"}},
+      {{"'", "&apos;"}},
+  }};
+
+  for (const auto& [unescaped, escaped] : replacements)
+  {
+    html = ReplaceAll(html, unescaped, escaped);
+  }
+  return html;
+}
+
+void ToLower(std::string* str)
+{
+  std::transform(str->begin(), str->end(), str->begin(), [](char c) { return Common::ToLower(c); });
+}
+
+void ToUpper(std::string* str)
+{
+  std::transform(str->begin(), str->end(), str->begin(), [](char c) { return Common::ToUpper(c); });
+}
+
+bool CaseInsensitiveEquals(std::string_view a, std::string_view b)
+{
+  if (a.size() != b.size())
+    return false;
+  return std::equal(a.begin(), a.end(), b.begin(),
+                    [](char ca, char cb) { return Common::ToLower(ca) == Common::ToLower(cb); });
+}
+
+std::string BytesToHexString(std::span<const u8> bytes)
+{
+  return fmt::format("{:02x}", fmt::join(bytes, ""));
+}
+}  // namespace Common

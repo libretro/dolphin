@@ -1,8 +1,9 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/NetPlay/NetPlaySetupDialog.h"
+
+#include <memory>
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -19,15 +20,16 @@
 #include "Core/Config/NetplaySettings.h"
 #include "Core/NetPlayProto.h"
 
-#include "DolphinQt/GameList/GameListModel.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
+#include "DolphinQt/QtUtils/NonDefaultQPushButton.h"
 #include "DolphinQt/QtUtils/UTF8CodePointCountValidator.h"
 #include "DolphinQt/Settings.h"
 
+#include "UICommon/GameFile.h"
 #include "UICommon/NetPlayIndex.h"
 
-NetPlaySetupDialog::NetPlaySetupDialog(QWidget* parent)
-    : QDialog(parent), m_game_list_model(Settings::Instance().GetGameListModel())
+NetPlaySetupDialog::NetPlaySetupDialog(const GameListModel& game_list_model, QWidget* parent)
+    : QDialog(parent), m_game_list_model(game_list_model)
 {
   setWindowTitle(tr("NetPlay Setup"));
   setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
@@ -86,7 +88,7 @@ void NetPlaySetupDialog::CreateMainLayout()
   m_button_box = new QDialogButtonBox(QDialogButtonBox::Cancel);
   m_nickname_edit = new QLineEdit;
   m_connection_type = new QComboBox;
-  m_reset_traversal_button = new QPushButton(tr("Reset Traversal Settings"));
+  m_reset_traversal_button = new NonDefaultQPushButton(tr("Reset Traversal Settings"));
   m_tab_widget = new QTabWidget;
 
   m_nickname_edit->setValidator(
@@ -100,7 +102,7 @@ void NetPlaySetupDialog::CreateMainLayout()
   m_ip_edit = new QLineEdit;
   m_connect_port_label = new QLabel(tr("Port:"));
   m_connect_port_box = new QSpinBox;
-  m_connect_button = new QPushButton(tr("Connect"));
+  m_connect_button = new NonDefaultQPushButton(tr("Connect"));
 
   m_connect_port_box->setMaximum(65535);
 
@@ -143,7 +145,7 @@ void NetPlaySetupDialog::CreateMainLayout()
   m_host_upnp = new QCheckBox(tr("Forward port (UPnP)"));
 #endif
   m_host_games = new QListWidget;
-  m_host_button = new QPushButton(tr("Host"));
+  m_host_button = new NonDefaultQPushButton(tr("Host"));
 
   m_host_port_box->setMaximum(65535);
   m_host_force_port_box->setMaximum(65535);
@@ -204,18 +206,16 @@ void NetPlaySetupDialog::CreateMainLayout()
 
 void NetPlaySetupDialog::ConnectWidgets()
 {
-  connect(m_connection_type, qOverload<int>(&QComboBox::currentIndexChanged), this,
+  connect(m_connection_type, &QComboBox::currentIndexChanged, this,
           &NetPlaySetupDialog::OnConnectionTypeChanged);
   connect(m_nickname_edit, &QLineEdit::textChanged, this, &NetPlaySetupDialog::SaveSettings);
 
   // Connect widget
   connect(m_ip_edit, &QLineEdit::textChanged, this, &NetPlaySetupDialog::SaveSettings);
-  connect(m_connect_port_box, qOverload<int>(&QSpinBox::valueChanged), this,
-          &NetPlaySetupDialog::SaveSettings);
+  connect(m_connect_port_box, &QSpinBox::valueChanged, this, &NetPlaySetupDialog::SaveSettings);
   // Host widget
-  connect(m_host_port_box, qOverload<int>(&QSpinBox::valueChanged), this,
-          &NetPlaySetupDialog::SaveSettings);
-  connect(m_host_games, qOverload<int>(&QListWidget::currentRowChanged), [this](int index) {
+  connect(m_host_port_box, &QSpinBox::valueChanged, this, &NetPlaySetupDialog::SaveSettings);
+  connect(m_host_games, &QListWidget::currentRowChanged, [this](int index) {
     Settings::GetQSettings().setValue(QStringLiteral("netplay/hostgame"),
                                       m_host_games->item(index)->text());
   });
@@ -228,7 +228,7 @@ void NetPlaySetupDialog::ConnectWidgets()
     m_host_chunked_upload_limit_box->setEnabled(value);
     SaveSettings();
   });
-  connect(m_host_chunked_upload_limit_box, qOverload<int>(&QSpinBox::valueChanged), this,
+  connect(m_host_chunked_upload_limit_box, &QSpinBox::valueChanged, this,
           &NetPlaySetupDialog::SaveSettings);
 
   connect(m_host_server_browser, &QCheckBox::toggled, this, &NetPlaySetupDialog::SaveSettings);
@@ -347,7 +347,7 @@ void NetPlaySetupDialog::accept()
       return;
     }
 
-    emit Host(items[0]->text());
+    emit Host(*items[0]->data(Qt::UserRole).value<std::shared_ptr<const UICommon::GameFile>>());
   }
 }
 
@@ -356,13 +356,13 @@ void NetPlaySetupDialog::PopulateGameList()
   QSignalBlocker blocker(m_host_games);
 
   m_host_games->clear();
-  for (int i = 0; i < m_game_list_model->rowCount(QModelIndex()); i++)
+  for (int i = 0; i < m_game_list_model.rowCount(QModelIndex()); i++)
   {
-    auto title = m_game_list_model->GetUniqueIdentifier(i);
-    auto path = m_game_list_model->GetPath(i);
+    std::shared_ptr<const UICommon::GameFile> game = m_game_list_model.GetGameFile(i);
 
-    auto* item = new QListWidgetItem(title);
-    item->setData(Qt::UserRole, path);
+    auto* item =
+        new QListWidgetItem(QString::fromStdString(m_game_list_model.GetNetPlayName(*game)));
+    item->setData(Qt::UserRole, QVariant::fromValue(std::move(game)));
     m_host_games->addItem(item);
   }
 
@@ -379,13 +379,13 @@ void NetPlaySetupDialog::PopulateGameList()
 void NetPlaySetupDialog::ResetTraversalHost()
 {
   Config::SetBaseOrCurrent(Config::NETPLAY_TRAVERSAL_SERVER,
-                           Config::NETPLAY_TRAVERSAL_SERVER.default_value);
+                           Config::NETPLAY_TRAVERSAL_SERVER.GetDefaultValue());
   Config::SetBaseOrCurrent(Config::NETPLAY_TRAVERSAL_PORT,
-                           Config::NETPLAY_TRAVERSAL_PORT.default_value);
+                           Config::NETPLAY_TRAVERSAL_PORT.GetDefaultValue());
 
   ModalMessageBox::information(
       this, tr("Reset Traversal Server"),
       tr("Reset Traversal Server to %1:%2")
-          .arg(QString::fromStdString(Config::NETPLAY_TRAVERSAL_SERVER.default_value),
-               QString::number(Config::NETPLAY_TRAVERSAL_PORT.default_value)));
+          .arg(QString::fromStdString(Config::NETPLAY_TRAVERSAL_SERVER.GetDefaultValue()),
+               QString::number(Config::NETPLAY_TRAVERSAL_PORT.GetDefaultValue())));
 }

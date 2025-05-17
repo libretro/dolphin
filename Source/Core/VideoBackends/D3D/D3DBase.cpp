@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoBackends/D3D/D3DBase.h"
 
@@ -15,7 +14,8 @@
 #include "Core/ConfigManager.h"
 #include "VideoBackends/D3D/D3DState.h"
 #include "VideoBackends/D3D/DXTexture.h"
-#include "VideoBackends/D3DCommon/Common.h"
+#include "VideoBackends/D3DCommon/D3DCommon.h"
+#include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace DX11
@@ -43,7 +43,7 @@ bool Create(u32 adapter_index, bool enable_debug_layer)
   if (!s_d3d11_library.Open("d3d11.dll") ||
       !s_d3d11_library.GetSymbol("D3D11CreateDevice", &d3d11_create_device))
   {
-    PanicAlertT("Failed to load d3d11.dll");
+    PanicAlertFmtT("Failed to load d3d11.dll");
     s_d3d11_library.Close();
     return false;
   }
@@ -57,7 +57,7 @@ bool Create(u32 adapter_index, bool enable_debug_layer)
   dxgi_factory = D3DCommon::CreateDXGIFactory(enable_debug_layer);
   if (!dxgi_factory)
   {
-    PanicAlertT("Failed to create DXGI factory");
+    PanicAlertFmtT("Failed to create DXGI factory");
     D3DCommon::UnloadLibraries();
     s_d3d11_library.Close();
     return false;
@@ -67,7 +67,7 @@ bool Create(u32 adapter_index, bool enable_debug_layer)
   HRESULT hr = dxgi_factory->EnumAdapters(adapter_index, adapter.GetAddressOf());
   if (FAILED(hr))
   {
-    WARN_LOG(VIDEO, "Adapter %u not found, using default", adapter_index);
+    WARN_LOG_FMT(VIDEO, "Adapter {} not found, using default: {}", adapter_index, DX11HRWrap(hr));
     adapter = nullptr;
   }
 
@@ -81,7 +81,7 @@ bool Create(u32 adapter_index, bool enable_debug_layer)
         D3D11_SDK_VERSION, device.GetAddressOf(), &feature_level, context.GetAddressOf());
 
     // Debugbreak on D3D error
-    if (SUCCEEDED(hr) && SUCCEEDED(device.As(&s_debug)))
+    if (SUCCEEDED(hr) && SUCCEEDED(hr = device.As(&s_debug)))
     {
       ComPtr<ID3D11InfoQueue> info_queue;
       if (SUCCEEDED(s_debug.As(&info_queue)))
@@ -99,7 +99,7 @@ bool Create(u32 adapter_index, bool enable_debug_layer)
     }
     else
     {
-      WARN_LOG(VIDEO, "Debug layer requested but not available.");
+      WARN_LOG_FMT(VIDEO, "Debug layer requested but not available: {}", DX11HRWrap(hr));
     }
   }
 
@@ -113,8 +113,9 @@ bool Create(u32 adapter_index, bool enable_debug_layer)
 
   if (FAILED(hr))
   {
-    PanicAlertT(
-        "Failed to initialize Direct3D.\nMake sure your video card supports at least D3D 10.0");
+    PanicAlertFmtT(
+        "Failed to initialize Direct3D.\nMake sure your video card supports at least D3D 10.0\n{0}",
+        DX11HRWrap(hr));
     dxgi_factory.Reset();
     D3DCommon::UnloadLibraries();
     s_d3d11_library.Close();
@@ -124,7 +125,9 @@ bool Create(u32 adapter_index, bool enable_debug_layer)
   hr = device.As(&device1);
   if (FAILED(hr))
   {
-    WARN_LOG(VIDEO, "Missing Direct3D 11.1 support. Logical operations will not be supported.");
+    WARN_LOG_FMT(VIDEO,
+                 "Missing Direct3D 11.1 support. Logical operations will not be supported.\n{}",
+                 DX11HRWrap(hr));
   }
 
   stateman = std::make_unique<StateManager>();
@@ -156,9 +159,9 @@ void Destroy()
   }
 
   if (remaining_references)
-    ERROR_LOG(VIDEO, "Unreleased references: %i.", remaining_references);
+    ERROR_LOG_FMT(VIDEO, "Unreleased references: {}.", remaining_references);
   else
-    NOTICE_LOG(VIDEO, "Successfully released all device references!");
+    NOTICE_LOG_FMT(VIDEO, "Successfully released all device references!");
 
   dxgi_factory.Reset();
   D3DCommon::UnloadLibraries();
@@ -200,12 +203,14 @@ std::vector<u32> GetAAModes(u32 adapter_index)
   if (temp_feature_level == D3D_FEATURE_LEVEL_10_0)
     return {};
 
+  const DXGI_FORMAT target_format =
+      D3DCommon::GetDXGIFormatForAbstractFormat(FramebufferManager::GetEFBColorFormat(), false);
   std::vector<u32> aa_modes;
   for (u32 samples = 1; samples <= D3D11_MAX_MULTISAMPLE_SAMPLE_COUNT; ++samples)
   {
     UINT quality_levels = 0;
-    if (SUCCEEDED(temp_device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, samples,
-                                                             &quality_levels)) &&
+    if (SUCCEEDED(
+            temp_device->CheckMultisampleQualityLevels(target_format, samples, &quality_levels)) &&
         quality_levels > 0)
     {
       aa_modes.push_back(samples);

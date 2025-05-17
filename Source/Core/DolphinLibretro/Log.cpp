@@ -14,7 +14,7 @@ class LogListener : public Common::Log::LogListener
 public:
   LogListener(retro_log_printf_t log);
   ~LogListener() override;
-  void Log(Common::Log::LOG_LEVELS level, const char* text) override;
+  void Log(Common::Log::LogLevel level, const char* text) override;
 
 private:
   retro_log_printf_t m_log;
@@ -38,16 +38,16 @@ void Shutdown()
 LogListener::LogListener(retro_log_printf_t log) : m_log(log)
 {
   Common::Log::LogManager::GetInstance()->SetLogLevel(Libretro::Options::logLevel);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::BOOT, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::CORE, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::VIDEO, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::HOST_GPU, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::COMMON, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::MEMMAP, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::DSPINTERFACE, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::DSPHLE, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::DSPLLE, true);
-  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::DSP_MAIL, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::BOOT, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::CORE, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::VIDEO, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::HOST_GPU, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::COMMON, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::MEMMAP, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::DSPINTERFACE, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::DSPHLE, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::DSPLLE, true);
+  Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::DSP_MAIL, true);
   Common::Log::LogManager::GetInstance()->RegisterListener(LogListener::CUSTOM_LISTENER, this);
   Common::Log::LogManager::GetInstance()->EnableListener(LogListener::CONSOLE_LISTENER, false);
   Common::Log::LogManager::GetInstance()->EnableListener(LogListener::CUSTOM_LISTENER, true);
@@ -60,21 +60,21 @@ LogListener::~LogListener()
   Common::Log::LogManager::GetInstance()->RegisterListener(LogListener::CONSOLE_LISTENER, nullptr);
 }
 
-void LogListener::Log(Common::Log::LOG_LEVELS level, const char* text)
+void LogListener::Log(Common::Log::LogLevel level, const char* text)
 {
   switch (level)
   {
-  case Common::Log::LOG_LEVELS::LDEBUG:
+  case Common::Log::LogLevel::LDEBUG:
     m_log(RETRO_LOG_DEBUG, text);
     break;
-  case Common::Log::LOG_LEVELS::LWARNING:
+  case Common::Log::LogLevel::LWARNING:
     m_log(RETRO_LOG_WARN, text);
     break;
-  case Common::Log::LOG_LEVELS::LERROR:
+  case Common::Log::LogLevel::LERROR:
     m_log(RETRO_LOG_ERROR, text);
     break;
-  case Common::Log::LOG_LEVELS::LNOTICE:
-  case Common::Log::LOG_LEVELS::LINFO:
+  case Common::Log::LogLevel::LNOTICE:
+  case Common::Log::LogLevel::LINFO:
   default:
     m_log(RETRO_LOG_INFO, text);
     break;

@@ -1,11 +1,11 @@
 // Copyright 2008 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "Core/PowerPC/Jit64/Jit.h"
 
 #include "Common/BitSet.h"
 #include "Common/CommonTypes.h"
 #include "Common/x64Emitter.h"
-#include "Core/PowerPC/Jit64/Jit.h"
 #include "Core/PowerPC/Jit64/RegCache/JitRegCache.h"
 #include "Core/PowerPC/Jit64Common/Jit64PowerPCState.h"
 
@@ -22,7 +22,7 @@ void Jit64::lfXXX(UGeckoInstruction inst)
   bool indexed = inst.OPCD == 31;
   bool update = indexed ? !!(inst.SUBOP10 & 0x20) : !!(inst.OPCD & 1);
   bool single = indexed ? !(inst.SUBOP10 & 0x40) : !(inst.OPCD & 2);
-  update &= indexed || inst.SIMM_16;
+  update &= indexed || (inst.SIMM_16 != 0);
 
   int d = inst.RD;
   int a = inst.RA;
@@ -93,7 +93,7 @@ void Jit64::stfXXX(UGeckoInstruction inst)
   bool indexed = inst.OPCD == 31;
   bool update = indexed ? !!(inst.SUBOP10 & 0x20) : !!(inst.OPCD & 1);
   bool single = indexed ? !(inst.SUBOP10 & 0x40) : !(inst.OPCD & 2);
-  update &= indexed || inst.SIMM_16;
+  update &= indexed || (inst.SIMM_16 != 0);
 
   int s = inst.RS;
   int a = inst.RA;
@@ -101,11 +101,11 @@ void Jit64::stfXXX(UGeckoInstruction inst)
   s32 imm = (s16)inst.SIMM_16;
   int accessSize = single ? 32 : 64;
 
-  FALLBACK_IF(update && jo.memcheck && a == b);
+  FALLBACK_IF(update && jo.memcheck && indexed && a == b);
 
   if (single)
   {
-    if (js.op->fprIsStoreSafe[s])
+    if (js.fpr_is_store_safe[s] && js.op->fprIsSingle[s])
     {
       RCOpArg Rs = fpr.Use(s, RCMode::Read);
       RegCache::Realize(Rs);
@@ -144,10 +144,10 @@ void Jit64::stfXXX(UGeckoInstruction inst)
       }
       else
       {
-        RCOpArg Ra = gpr.UseNoImm(a, RCMode::ReadWrite);
+        RCOpArg Ra = gpr.RevertableBind(a, RCMode::Write);
         RegCache::Realize(Ra);
         MemoryExceptionCheck();
-        ADD(32, Ra, Imm32((u32)imm));
+        MOV(32, Ra, Imm32(addr));
       }
     }
     return;

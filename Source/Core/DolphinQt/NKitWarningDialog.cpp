@@ -1,6 +1,5 @@
 // Copyright 2020 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/NKitWarningDialog.h"
 
@@ -15,14 +14,17 @@
 
 #include "Common/Config/Config.h"
 #include "Core/Config/MainSettings.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 #include "DolphinQt/Resources.h"
 
 bool NKitWarningDialog::ShowUnlessDisabled(QWidget* parent)
 {
   if (Config::Get(Config::MAIN_SKIP_NKIT_WARNING))
     return true;
-  else
-    return NKitWarningDialog(parent).exec() == QDialog::Accepted;
+
+  NKitWarningDialog dialog(parent);
+  SetQWidgetWindowDecorations(&dialog);
+  return dialog.exec() == QDialog::Accepted;
 }
 
 NKitWarningDialog::NKitWarningDialog(QWidget* parent) : QDialog(parent)
@@ -41,10 +43,10 @@ NKitWarningDialog::NKitWarningDialog(QWidget* parent) : QDialog(parent)
          "• You can't use NetPlay with people who have normal disc images\n"
          "• Input recordings are not compatible between NKit disc images and normal disc images\n"
          "• Savestates are not compatible between NKit disc images and normal disc images\n"
-         "• Some games crash, such as Super Paper Mario\n"
+         "• Some games can crash, such as Super Paper Mario and Metal Gear Solid: The Twin Snakes\n"
          "• Wii games don't work at all in older versions of Dolphin and in many other programs\n"
          "\n"
-         "Are you sure you want to continue anyway?\n"));
+         "Are you sure you want to continue anyway?"));
   warning->setWordWrap(true);
   main_layout->addWidget(warning);
 

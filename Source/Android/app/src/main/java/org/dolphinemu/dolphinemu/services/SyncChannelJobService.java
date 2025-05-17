@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.services;
 
 import android.annotation.TargetApi;
@@ -11,12 +13,11 @@ import android.media.tv.TvContract;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.tvprovider.media.tv.Channel;
 import androidx.tvprovider.media.tv.ChannelLogoUtils;
 import androidx.tvprovider.media.tv.TvContractCompat;
-
-import android.util.Log;
 
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.model.HomeScreenChannel;
@@ -86,7 +87,7 @@ public class SyncChannelJobService extends JobService
       }
       else
       {
-        subscriptions = TvUtil.createUniversalSubscriptions();
+        subscriptions = TvUtil.createUniversalSubscriptions(context);
         for (HomeScreenChannel subscription : subscriptions)
         {
           long channelId = createChannel(subscription);
@@ -112,7 +113,7 @@ public class SyncChannelJobService extends JobService
       }
 
       // Create the channel since it has not been added to the TV Provider.
-      Uri appLinkIntentUri = Uri.parse(subscription.getAppLinkIntentUri());
+      Uri appLinkIntentUri = subscription.getAppLinkIntentUri();
 
       Channel.Builder builder = new Channel.Builder();
       builder.setType(TvContractCompat.Channels.TYPE_PREVIEW)
@@ -128,7 +129,7 @@ public class SyncChannelJobService extends JobService
                               builder.build().toContentValues());
 
       channelId = ContentUris.parseId(channelUrl);
-      Bitmap bitmap = TvUtil.convertToBitmap(context, R.drawable.ic_launcher);
+      Bitmap bitmap = TvUtil.convertToBitmap(context, R.drawable.ic_dolphin_launcher);
       ChannelLogoUtils.storeChannelLogo(context, channelId, bitmap);
 
       return channelId;

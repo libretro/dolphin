@@ -14,6 +14,11 @@
 #include "Core/ConfigManager.h"
 #include "Core/Host.h"
 
+std::vector<std::string> Host_GetPreferredLocales()
+{
+  return {};
+}
+
 void Host_NotifyMapLoaded()
 {
 }
@@ -24,14 +29,29 @@ void Host_RefreshDSPDebuggerWindow()
 
 void Host_Message(HostMessageID id)
 {
-  DEBUG_LOG(COMMON, "message id: %i\n", (int)id);
+  DEBUG_LOG_FMT(COMMON, "message id: {}}", (int)id);
 }
 
 void Host_UpdateTitle(const std::string& title)
 {
 #if 0
-  DEBUG_LOG(COMMON, "title : %s\n", title.c_str());
+  DEBUG_LOG_FMT(COMMON, "title : {}", title);
 #endif
+}
+
+void Host_UpdateDiscordClientID(const std::string& client_id)
+{
+}
+
+bool Host_UpdateDiscordPresenceRaw(const std::string& details, const std::string& state,
+                                   const std::string& large_image_key,
+                                   const std::string& large_image_text,
+                                   const std::string& small_image_key,
+                                   const std::string& small_image_text,
+                                   const int64_t start_timestamp, const int64_t end_timestamp,
+                                   const int party_size, const int party_max)
+{
+  return false;
 }
 
 void Host_UpdateDisasmDialog()
@@ -49,6 +69,11 @@ void Host_RequestRenderWindowSize(int width, int height)
 bool Host_RendererHasFocus()
 {
   /* called on input poll */
+  return true;
+}
+
+bool Host_RendererHasFullFocus()
+{
   return true;
 }
 

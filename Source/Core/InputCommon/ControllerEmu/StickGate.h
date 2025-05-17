@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -15,6 +14,9 @@
 
 namespace ControllerEmu
 {
+// Minimum stick distance from the center before virtual notches are applied.
+constexpr ControlState MINIMUM_NOTCH_DISTANCE = 0.9;
+
 // An abstract class representing the plastic shell that limits an analog stick's movement.
 class StickGate
 {
@@ -85,14 +87,17 @@ public:
 
   ControlState GetDeadzonePercentage() const;
 
+  virtual ControlState GetVirtualNotchSize() const { return 0.0; };
+
   virtual ControlState GetGateRadiusAtAngle(double angle) const = 0;
-  virtual ReshapeData GetReshapableState(bool adjusted) = 0;
+  virtual ReshapeData GetReshapableState(bool adjusted) const = 0;
   virtual ControlState GetDefaultInputRadiusAtAngle(double ang) const;
 
   void SetCalibrationToDefault();
   void SetCalibrationFromGate(const StickGate& gate);
 
-  static void UpdateCalibrationData(CalibrationData& data, Common::DVec2 point);
+  static void UpdateCalibrationData(CalibrationData& data, Common::DVec2 point1,
+                                    Common::DVec2 point2);
   static ControlState GetCalibrationDataRadiusAtAngle(const CalibrationData& data, double angle);
 
   const CalibrationData& GetCalibrationData() const;
@@ -101,12 +106,19 @@ public:
   const ReshapeData& GetCenter() const;
   void SetCenter(ReshapeData center);
 
+  static constexpr const char* X_INPUT_OVERRIDE = "X";
+  static constexpr const char* Y_INPUT_OVERRIDE = "Y";
+  static constexpr const char* Z_INPUT_OVERRIDE = "Z";
+
 protected:
-  ReshapeData Reshape(ControlState x, ControlState y, ControlState modifier = 0.0);
+  ReshapeData Reshape(ControlState x, ControlState y, ControlState modifier = 0.0,
+                      ControlState clamp = 1.0) const;
+
+  virtual Control* GetModifierInput() const;
 
 private:
-  void LoadConfig(IniFile::Section*, const std::string&, const std::string&) override;
-  void SaveConfig(IniFile::Section*, const std::string&, const std::string&) override;
+  void LoadConfig(Common::IniFile::Section*, const std::string&, const std::string&) override;
+  void SaveConfig(Common::IniFile::Section*, const std::string&, const std::string&) override;
 
   CalibrationData m_calibration;
   SettingValue<double> m_deadzone_setting;

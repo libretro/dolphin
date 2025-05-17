@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/Config/Graphics/PostProcessingConfigWindow.h"
 
@@ -22,7 +21,7 @@
 #include "DolphinQt/Config/Graphics/EnhancementsWidget.h"
 
 #include "VideoCommon/PostProcessing.h"
-#include "VideoCommon/RenderBase.h"
+#include "VideoCommon/Present.h"
 #include "VideoCommon/VideoConfig.h"
 
 using ConfigurationOption = VideoCommon::PostProcessingConfiguration::ConfigurationOption;
@@ -32,9 +31,9 @@ PostProcessingConfigWindow::PostProcessingConfigWindow(EnhancementsWidget* paren
                                                        const std::string& shader)
     : QDialog(parent), m_shader(shader)
 {
-  if (g_renderer && g_renderer->GetPostProcessor())
+  if (g_presenter && g_presenter->GetPostProcessor())
   {
-    m_post_processor = g_renderer->GetPostProcessor()->GetConfig();
+    m_post_processor = g_presenter->GetPostProcessor()->GetConfig();
   }
   else
   {
@@ -53,7 +52,7 @@ PostProcessingConfigWindow::PostProcessingConfigWindow(EnhancementsWidget* paren
 PostProcessingConfigWindow::~PostProcessingConfigWindow()
 {
   m_post_processor->SaveOptionsConfiguration();
-  if (!(g_renderer && g_renderer->GetPostProcessor()))
+  if (!(g_presenter && g_presenter->GetPostProcessor()))
   {
     delete m_post_processor;
   }
@@ -94,12 +93,17 @@ void PostProcessingConfigWindow::Create()
 
   u32 row = 0;
   bool add_general_page = false;
-  for (const auto& it : m_config_groups)
+  for (auto& it : m_config_groups)
   {
     if (it->HasSubGroups())
     {
       auto* const tab = CreateDependentTab(it);
       m_tabs->addTab(tab, QString::fromStdString(it->GetGUIName()));
+
+      if (it->GetConfigurationOption()->m_type == OptionType::Bool)
+      {
+        it->EnableSuboptions(it->GetCheckboxValue());
+      }
     }
     else
     {
@@ -214,6 +218,12 @@ bool PostProcessingConfigWindow::ConfigGroup::HasSubGroups() const noexcept
   return !m_subgroups.empty();
 }
 
+const ConfigurationOption*
+PostProcessingConfigWindow::ConfigGroup::GetConfigurationOption() const noexcept
+{
+  return m_config_option;
+}
+
 const std::vector<std::unique_ptr<PostProcessingConfigWindow::ConfigGroup>>&
 PostProcessingConfigWindow::ConfigGroup::GetSubGroups() const noexcept
 {
@@ -228,11 +238,11 @@ u32 PostProcessingConfigWindow::ConfigGroup::AddWidgets(PostProcessingConfigWind
 
   switch (m_config_option->m_type)
   {
-  case OptionType::OPTION_BOOL:
+  case OptionType::Bool:
     return AddBool(parent, grid, row);
-  case OptionType::OPTION_FLOAT:
+  case OptionType::Float:
     return AddFloat(parent, grid, row);
-  case OptionType::OPTION_INTEGER:
+  case OptionType::Integer:
     return AddInteger(parent, grid, row);
   default:
     // obviously shouldn't get here
@@ -259,7 +269,6 @@ u32 PostProcessingConfigWindow::ConfigGroup::AddInteger(PostProcessingConfigWind
 
   for (size_t i = 0; i < vector_size; ++i)
   {
-    const int current_value = m_config_option->m_integer_values[i];
     const double range =
         m_config_option->m_integer_max_values[i] - m_config_option->m_integer_min_values[i];
     // "How many steps we have is the range divided by the step interval configured.
@@ -268,6 +277,9 @@ u32 PostProcessingConfigWindow::ConfigGroup::AddInteger(PostProcessingConfigWind
     //  Round up so if it is outside our range, then set it to the minimum or maximum"
     const int steps =
         std::ceil(range / static_cast<double>(m_config_option->m_integer_step_values[i]));
+    const int current_value = std::round(
+        (m_config_option->m_integer_values[i] - m_config_option->m_integer_min_values[i]) /
+        static_cast<double>(m_config_option->m_integer_step_values[i]));
 
     auto* const slider = new QSlider(Qt::Orientation::Horizontal);
     slider->setMinimum(0);
@@ -277,7 +289,7 @@ u32 PostProcessingConfigWindow::ConfigGroup::AddInteger(PostProcessingConfigWind
     QObject::connect(slider, &QSlider::valueChanged,
                      [this, parent](int value) { parent->UpdateInteger(this, value); });
 
-    auto* const value_box = new QLineEdit(QString::number(current_value));
+    auto* const value_box = new QLineEdit(QString::number(m_config_option->m_integer_values[i]));
     value_box->setEnabled(false);
 
     grid->addWidget(slider, row, 1);
@@ -301,11 +313,12 @@ u32 PostProcessingConfigWindow::ConfigGroup::AddFloat(PostProcessingConfigWindow
 
   for (size_t i = 0; i < vector_size; ++i)
   {
-    const int current_value =
-        m_config_option->m_float_values[i] / m_config_option->m_float_step_values[i];
     const float range =
         m_config_option->m_float_max_values[i] - m_config_option->m_float_min_values[i];
     const int steps = std::ceil(range / m_config_option->m_float_step_values[i]);
+    const int current_value =
+        std::round((m_config_option->m_float_values[i] - m_config_option->m_float_min_values[i]) /
+                   m_config_option->m_float_step_values[i]);
 
     auto* const slider = new QSlider(Qt::Orientation::Horizontal);
     slider->setMinimum(0);
@@ -337,7 +350,7 @@ void PostProcessingConfigWindow::ConfigGroup::EnableSuboptions(const bool state)
 {
   for (auto& it : m_subgroups)
   {
-    if (it->m_config_option->m_type == OptionType::OPTION_BOOL)
+    if (it->m_config_option->m_type == OptionType::Bool)
     {
       it->m_checkbox->setEnabled(state);
     }
@@ -350,6 +363,11 @@ void PostProcessingConfigWindow::ConfigGroup::EnableSuboptions(const bool state)
     }
     it->EnableSuboptions(state);
   }
+}
+
+int PostProcessingConfigWindow::ConfigGroup::GetCheckboxValue() const
+{
+  return m_checkbox->isChecked();
 }
 
 int PostProcessingConfigWindow::ConfigGroup::GetSliderValue(size_t index) const

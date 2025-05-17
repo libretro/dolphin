@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/TAS/IRWidget.h"
 
@@ -55,8 +54,8 @@ void IRWidget::paintEvent(QPaintEvent* event)
   painter.drawLine(PADDING + w / 2, PADDING, PADDING + w / 2, PADDING + h);
 
   // convert from value space to widget space
-  u16 x = PADDING + (w - (m_x * w) / ir_max_x);
-  u16 y = PADDING + ((m_y * h) / ir_max_y);
+  u16 x = PADDING + ((m_x * w) / ir_max_x);
+  u16 y = PADDING + (h - (m_y * h) / ir_max_y);
 
   painter.drawLine(PADDING + w / 2, PADDING + h / 2, x, y);
 
@@ -80,6 +79,9 @@ void IRWidget::mouseMoveEvent(QMouseEvent* event)
 
 void IRWidget::handleMouseEvent(QMouseEvent* event)
 {
+  u16 prev_x = m_x;
+  u16 prev_y = m_y;
+
   if (event->button() == Qt::RightButton)
   {
     m_x = std::round(ir_max_x / 2.);
@@ -88,14 +90,25 @@ void IRWidget::handleMouseEvent(QMouseEvent* event)
   else
   {
     // convert from widget space to value space
-    int new_x = ir_max_x - (event->x() * ir_max_x) / width();
-    int new_y = (event->y() * ir_max_y) / height();
+    int new_x = (event->pos().x() * ir_max_x) / width();
+    int new_y = ir_max_y - (event->pos().y() * ir_max_y) / height();
 
     m_x = std::max(0, std::min(static_cast<int>(ir_max_x), new_x));
     m_y = std::max(0, std::min(static_cast<int>(ir_max_y), new_y));
   }
 
-  emit ChangedX(m_x);
-  emit ChangedY(m_y);
-  update();
+  bool changed = false;
+  if (prev_x != m_x)
+  {
+    emit ChangedX(m_x);
+    changed = true;
+  }
+  if (prev_y != m_y)
+  {
+    emit ChangedY(m_y);
+    changed = true;
+  }
+
+  if (changed)
+    update();
 }

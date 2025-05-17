@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -19,7 +18,7 @@ public:
   virtual void Shutdown() = 0;
 
   virtual void DoState(PointerWrap& p) = 0;
-  virtual void PauseAndLock(bool do_lock, bool unpause_on_unlock = true) = 0;
+  virtual void PauseAndLock(bool do_lock) = 0;
 
   virtual void DSP_WriteMailBoxHigh(bool cpu_mailbox, u16 value) = 0;
   virtual void DSP_WriteMailBoxLow(bool cpu_mailbox, u16 value) = 0;

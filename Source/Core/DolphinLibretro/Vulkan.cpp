@@ -9,8 +9,11 @@
 #include <mutex>
 #include <vector>
 
+#include "Core/Config/MainSettings.h"
 #include "DolphinLibretro/Video.h"
-#include "VideoCommon/RenderBase.h"
+#include "DolphinLibretro/Vulkan.h"
+#include "VideoBackends/Vulkan/VulkanContext.h"
+#include "VideoCommon/FramebufferManager.h"
 
 #define LIBRETRO_VK_WARP_LIST()                                                                    \
   LIBRETRO_VK_WARP_FUNC(vkDestroyInstance);                                                        \
@@ -321,8 +324,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue,
                     0, nullptr, vulkan->queue_index);
 #endif
   swapchain->condVar.notify_all();
-  video_cb(RETRO_HW_FRAME_BUFFER_VALID, g_renderer->GetTargetWidth(), g_renderer->GetTargetHeight(),
-           0);
+  video_cb(RETRO_HW_FRAME_BUFFER_VALID, g_framebuffer_manager->GetEFBWidth(), g_framebuffer_manager->GetEFBHeight(), 0);
   return VK_SUCCESS;
 }
 

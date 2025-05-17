@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -27,7 +26,7 @@ namespace IOS::HLE::USB
 class LibusbDevice final : public Device
 {
 public:
-  LibusbDevice(Kernel& ios, libusb_device* device,
+  LibusbDevice(EmulationKernel& ios, libusb_device* device,
                const libusb_device_descriptor& device_descriptor);
   ~LibusbDevice();
   DeviceDescriptor GetDeviceDescriptor() const override;
@@ -47,7 +46,7 @@ public:
   int SubmitTransfer(std::unique_ptr<IsoMessage> message) override;
 
 private:
-  Kernel& m_ios;
+  EmulationKernel& m_ios;
 
   std::vector<LibusbUtils::ConfigDescriptor> m_config_descriptors;
   u16 m_vid = 0;

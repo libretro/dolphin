@@ -1,6 +1,5 @@
 // Copyright 2015 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -12,9 +11,9 @@
 
 namespace ciface::evdev
 {
-void Init();
-void PopulateDevices();
-void Shutdown();
+class InputBackend;
+
+std::unique_ptr<ciface::InputBackend> CreateInputBackend(ControllerInterface* controller_interface);
 
 class evdevDevice : public Core::Device
 {
@@ -76,12 +75,14 @@ public:
   void UpdateInput() override;
   bool IsValid() const override;
 
+  evdevDevice(InputBackend* input_backend);
   ~evdevDevice();
 
   // Return true if node was "interesting".
   bool AddNode(std::string devnode, int fd, libevdev* dev);
 
   const char* GetUniqueID() const;
+  const char* GetPhysicalLocation() const;
 
   std::string GetName() const override { return m_name; }
   std::string GetSource() const override { return "evdev"; }
@@ -97,5 +98,7 @@ private:
   };
 
   std::vector<Node> m_nodes;
+
+  InputBackend& m_input_backend;
 };
 }  // namespace ciface::evdev

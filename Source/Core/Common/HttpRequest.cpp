@@ -1,6 +1,5 @@
 // Copyright 2017 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/HttpRequest.h"
 
@@ -28,19 +27,22 @@ public:
   explicit Impl(std::chrono::milliseconds timeout_ms, ProgressCallback callback);
 
   bool IsValid() const;
+  std::string GetHeaderValue(std::string_view name) const;
   void SetCookies(const std::string& cookies);
   void UseIPv4();
   void FollowRedirects(long max);
+  s32 GetLastResponseCode();
   Response Fetch(const std::string& url, Method method, const Headers& headers, const u8* payload,
                  size_t size, AllowedReturnCodes codes = AllowedReturnCodes::Ok_Only);
 
-  static int CurlProgressCallback(Impl* impl, double dlnow, double dltotal, double ulnow,
-                                  double ultotal);
+  static int CurlProgressCallback(Impl* impl, curl_off_t dltotal, curl_off_t dlnow,
+                                  curl_off_t ultotal, curl_off_t ulnow);
   std::string EscapeComponent(const std::string& string);
 
 private:
   static inline std::once_flag s_curl_was_initialized;
   ProgressCallback m_callback;
+  Headers m_response_headers;
   std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> m_curl{nullptr, curl_easy_cleanup};
   std::string m_error_string;
 };
@@ -77,6 +79,16 @@ std::string HttpRequest::EscapeComponent(const std::string& string)
   return m_impl->EscapeComponent(string);
 }
 
+s32 HttpRequest::GetLastResponseCode() const
+{
+  return m_impl->GetLastResponseCode();
+}
+
+std::string HttpRequest::GetHeaderValue(std::string_view name) const
+{
+  return m_impl->GetHeaderValue(name);
+}
+
 HttpRequest::Response HttpRequest::Get(const std::string& url, const Headers& headers,
                                        AllowedReturnCodes codes)
 {
@@ -96,11 +108,12 @@ HttpRequest::Response HttpRequest::Post(const std::string& url, const std::strin
                        reinterpret_cast<const u8*>(payload.data()), payload.size(), codes);
 }
 
-int HttpRequest::Impl::CurlProgressCallback(Impl* impl, double dlnow, double dltotal, double ulnow,
-                                            double ultotal)
+int HttpRequest::Impl::CurlProgressCallback(Impl* impl, curl_off_t dltotal, curl_off_t dlnow,
+                                            curl_off_t ultotal, curl_off_t ulnow)
 {
   // Abort if callback isn't true
-  return !impl->m_callback(dlnow, dltotal, ulnow, ultotal);
+  return !impl->m_callback(static_cast<s64>(dltotal), static_cast<s64>(dlnow),
+                           static_cast<s64>(ultotal), static_cast<s64>(ulnow));
 }
 
 HttpRequest::Impl::Impl(std::chrono::milliseconds timeout_ms, ProgressCallback callback)
@@ -117,7 +130,7 @@ HttpRequest::Impl::Impl(std::chrono::milliseconds timeout_ms, ProgressCallback c
   if (m_callback)
   {
     curl_easy_setopt(m_curl.get(), CURLOPT_PROGRESSDATA, this);
-    curl_easy_setopt(m_curl.get(), CURLOPT_PROGRESSFUNCTION, CurlProgressCallback);
+    curl_easy_setopt(m_curl.get(), CURLOPT_XFERINFOFUNCTION, CurlProgressCallback);
   }
 
   // Set up error buffer
@@ -144,6 +157,13 @@ bool HttpRequest::Impl::IsValid() const
   return m_curl != nullptr;
 }
 
+s32 HttpRequest::Impl::GetLastResponseCode()
+{
+  long response_code{};
+  curl_easy_getinfo(m_curl.get(), CURLINFO_RESPONSE_CODE, &response_code);
+  return static_cast<s32>(response_code);
+}
+
 void HttpRequest::Impl::SetCookies(const std::string& cookies)
 {
   curl_easy_setopt(m_curl.get(), CURLOPT_COOKIE, cookies.c_str());
@@ -158,6 +178,17 @@ void HttpRequest::Impl::FollowRedirects(long max)
 {
   curl_easy_setopt(m_curl.get(), CURLOPT_FOLLOWLOCATION, 1);
   curl_easy_setopt(m_curl.get(), CURLOPT_MAXREDIRS, max);
+}
+
+std::string HttpRequest::Impl::GetHeaderValue(std::string_view name) const
+{
+  for (const auto& [key, value] : m_response_headers)
+  {
+    if (key == name)
+      return value.value();
+  }
+
+  return {};
 }
 
 std::string HttpRequest::Impl::EscapeComponent(const std::string& string)
@@ -177,10 +208,26 @@ static size_t CurlWriteCallback(char* data, size_t size, size_t nmemb, void* use
   return actual_size;
 }
 
+static size_t header_callback(char* buffer, size_t size, size_t nitems, void* userdata)
+{
+  auto* headers = static_cast<HttpRequest::Headers*>(userdata);
+  std::string_view full_buffer = std::string_view{buffer, nitems};
+  const size_t colon_pos = full_buffer.find(':');
+  if (colon_pos == std::string::npos)
+    return nitems * size;
+
+  const std::string_view key = full_buffer.substr(0, colon_pos);
+  const std::string_view value = StripWhitespace(full_buffer.substr(colon_pos + 1));
+
+  headers->emplace(std::string{key}, std::string{value});
+  return nitems * size;
+}
+
 HttpRequest::Response HttpRequest::Impl::Fetch(const std::string& url, Method method,
                                                const Headers& headers, const u8* payload,
                                                size_t size, AllowedReturnCodes codes)
 {
+  m_response_headers.clear();
   curl_easy_setopt(m_curl.get(), CURLOPT_POST, method == Method::POST);
   curl_easy_setopt(m_curl.get(), CURLOPT_URL, url.c_str());
   if (method == Method::POST)
@@ -202,6 +249,9 @@ HttpRequest::Response HttpRequest::Impl::Fetch(const std::string& url, Method me
   }
   curl_easy_setopt(m_curl.get(), CURLOPT_HTTPHEADER, list);
 
+  curl_easy_setopt(m_curl.get(), CURLOPT_HEADERFUNCTION, header_callback);
+  curl_easy_setopt(m_curl.get(), CURLOPT_HEADERDATA, static_cast<void*>(&m_response_headers));
+
   std::vector<u8> buffer;
   curl_easy_setopt(m_curl.get(), CURLOPT_WRITEFUNCTION, CurlWriteCallback);
   curl_easy_setopt(m_curl.get(), CURLOPT_WRITEDATA, &buffer);
@@ -210,7 +260,7 @@ HttpRequest::Response HttpRequest::Impl::Fetch(const std::string& url, Method me
   const CURLcode res = curl_easy_perform(m_curl.get());
   if (res != CURLE_OK)
   {
-    ERROR_LOG(COMMON, "Failed to %s %s: %s", type, url.c_str(), m_error_string.c_str());
+    ERROR_LOG_FMT(COMMON, "Failed to {} {}: {}", type, url, m_error_string);
     return {};
   }
 
@@ -221,8 +271,17 @@ HttpRequest::Response HttpRequest::Impl::Fetch(const std::string& url, Method me
   curl_easy_getinfo(m_curl.get(), CURLINFO_RESPONSE_CODE, &response_code);
   if (response_code != 200)
   {
-    ERROR_LOG(COMMON, "Failed to %s %s: server replied with code %li and body\n\x1b[0m%.*s", type,
-              url.c_str(), response_code, static_cast<int>(buffer.size()), buffer.data());
+    if (buffer.empty())
+    {
+      ERROR_LOG_FMT(COMMON, "Failed to {} {}: server replied with code {}", type, url,
+                    response_code);
+    }
+    else
+    {
+      ERROR_LOG_FMT(COMMON, "Failed to {} {}: server replied with code {} and body\n\x1b[0m{:.{}}",
+                    type, url, response_code, reinterpret_cast<char*>(buffer.data()),
+                    static_cast<int>(buffer.size()));
+    }
     return {};
   }
 

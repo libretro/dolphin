@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -16,6 +15,7 @@
 #include "InputCommon/ControllerEmu/ControlGroup/IMUCursor.h"
 #include "InputCommon/ControllerEmu/ControlGroup/IMUGyroscope.h"
 #include "InputCommon/ControllerEmu/ControlGroup/Tilt.h"
+#include "InputCommon/ControllerEmu/ControllerEmu.h"
 
 namespace WiimoteEmu
 {
@@ -24,27 +24,25 @@ using MathUtil::GRAVITY_ACCELERATION;
 struct PositionalState
 {
   // meters
-  Common::Vec3 position;
+  Common::Vec3 position{};
   // meters/second
-  Common::Vec3 velocity;
+  Common::Vec3 velocity{};
   // meters/second^2
-  Common::Vec3 acceleration;
+  Common::Vec3 acceleration{};
 };
 
 struct RotationalState
 {
   // radians
-  Common::Vec3 angle;
+  Common::Vec3 angle{};
   // radians/second
-  Common::Vec3 angular_velocity;
+  Common::Vec3 angular_velocity{};
 };
 
 struct IMUCursorState
 {
-  IMUCursorState();
-
   // Rotation of world around device.
-  Common::Matrix33 rotation;
+  Common::Quaternion rotation = Common::Quaternion::Identity();
 
   float recentered_pitch = {};
 };
@@ -52,27 +50,28 @@ struct IMUCursorState
 // Contains both positional and rotational state.
 struct MotionState : PositionalState, RotationalState
 {
+  MotionState() = default;
 };
 
 // Note that 'gyroscope' is rotation of world around device.
 // Alternative accelerometer_normal can be supplied to correct from non-accelerometer data.
 // e.g. Used for yaw/pitch correction with IR data.
-Common::Matrix33 ComplementaryFilter(const Common::Matrix33& gyroscope,
-                                     const Common::Vec3& accelerometer, float accel_weight,
-                                     const Common::Vec3& accelerometer_normal = {0, 0, 1});
+Common::Quaternion ComplementaryFilter(const Common::Quaternion& gyroscope,
+                                       const Common::Vec3& accelerometer, float accel_weight,
+                                       const Common::Vec3& accelerometer_normal = {0, 0, 1});
 
 // Estimate orientation from accelerometer data.
-Common::Matrix33 GetMatrixFromAcceleration(const Common::Vec3& accel);
+Common::Quaternion GetRotationFromAcceleration(const Common::Vec3& accel);
 
-// Get a rotation matrix from current gyro data.
-Common::Matrix33 GetMatrixFromGyroscope(const Common::Vec3& gyro);
+// Get a quaternion from current gyro data.
+Common::Quaternion GetRotationFromGyroscope(const Common::Vec3& gyro);
 
 // Build a rotational matrix from euler angles.
 Common::Matrix33 GetRotationalMatrix(const Common::Vec3& angle);
 
-float GetPitch(const Common::Matrix33& world_rotation);
-float GetRoll(const Common::Matrix33& world_rotation);
-float GetYaw(const Common::Matrix33& world_rotation);
+float GetPitch(const Common::Quaternion& world_rotation);
+float GetRoll(const Common::Quaternion& world_rotation);
+float GetYaw(const Common::Quaternion& world_rotation);
 
 void ApproachPositionWithJerk(PositionalState* state, const Common::Vec3& target,
                               const Common::Vec3& max_jerk, float time_elapsed);
@@ -83,7 +82,8 @@ void ApproachAngleWithAccel(RotationalState* state, const Common::Vec3& target, 
 void EmulateShake(PositionalState* state, ControllerEmu::Shake* shake_group, float time_elapsed);
 void EmulateTilt(RotationalState* state, ControllerEmu::Tilt* tilt_group, float time_elapsed);
 void EmulateSwing(MotionState* state, ControllerEmu::Force* swing_group, float time_elapsed);
-void EmulatePoint(MotionState* state, ControllerEmu::Cursor* ir_group, float time_elapsed);
+void EmulatePoint(MotionState* state, ControllerEmu::Cursor* ir_group,
+                  const ControllerEmu::InputOverrideFunction& override_func, float time_elapsed);
 void EmulateIMUCursor(IMUCursorState* state, ControllerEmu::IMUCursor* imu_ir_group,
                       ControllerEmu::IMUAccelerometer* imu_accelerometer_group,
                       ControllerEmu::IMUGyroscope* imu_gyroscope_group, float time_elapsed);

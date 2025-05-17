@@ -18,6 +18,7 @@
 #include "Core/HW/SI/SI.h"
 #include "Core/HW/SI/SI_Device.h"
 #include "Core/Host.h"
+#include "Core/System.h"
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Options.h"
 #include "InputCommon/ControlReference/ControlReference.h"
@@ -420,9 +421,6 @@ void Init()
 {
   environ_cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumble);
 
-  WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
-  g_controller_interface.Initialize(wsi);
-
   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_KEYBOARD, 0));
 
   Pad::Initialize();
@@ -436,7 +434,7 @@ void Init()
       {"GameCube Controller", RETRO_DEVICE_JOYPAD},
   };
 
-  if (SConfig::GetInstance().bWii && !SConfig::GetInstance().m_bt_passthrough_enabled)
+  if (SConfig::GetInstance().bWii)
   {
     init_wiimotes = true;
     Wiimote::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
@@ -571,6 +569,7 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
   std::string devLightgun = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_LIGHTGUN);
 #endif
 
+  auto& si = Core::System::GetInstance().GetSerialInterface();
   if (device == RETRO_DEVICE_NONE)
   {
     if (SConfig::GetInstance().bWii && port < 4)
@@ -578,13 +577,11 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 
     if (!SConfig::GetInstance().bWii || !Libretro::Options::altGCPorts)
     {
-      SConfig::GetInstance().m_SIDevice[port] = SerialInterface::SIDEVICE_NONE;
-      SerialInterface::ChangeDevice(SConfig::GetInstance().m_SIDevice[port], port);
+      si.ChangeDevice(SerialInterface::SIDEVICE_NONE, port);
     }
     else if (port > 3)
     {
-      SConfig::GetInstance().m_SIDevice[port - 4] = SerialInterface::SIDEVICE_NONE;
-      SerialInterface::ChangeDevice(SConfig::GetInstance().m_SIDevice[port - 4], port - 4);
+      si.ChangeDevice(SerialInterface::SIDEVICE_NONE, port - 4);
     }
   }
   else if (!SConfig::GetInstance().bWii || device == RETRO_DEVICE_GC_ON_WII || port > 3)
@@ -592,12 +589,11 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
     if (device == RETRO_DEVICE_GC_ON_WII) // Disconnect Wii device if we're using GC controller as device type to avoid conflict
       WiimoteCommon::SetSource(port, WiimoteSource::None);
 
-    SConfig::GetInstance().m_SIDevice[port > 3 ? port - 4 : port] = SerialInterface::SIDEVICE_GC_CONTROLLER;
-    SerialInterface::ChangeDevice(SConfig::GetInstance().m_SIDevice[port > 3 ? port - 4 : port], port > 3 ? port - 4 : port);
+    si.ChangeDevice(SerialInterface::SIDEVICE_GC_CONTROLLER, port > 3 ? port - 4 : port);
 
     GCPad* gcPad = (GCPad*)Pad::GetConfig()->GetController(port > 3 ? port - 4 : port);
     // load an empty inifile section, clears everything
-    IniFile::Section sec;
+    Common::IniFile::Section sec;
     gcPad->LoadConfig(&sec);
     gcPad->SetDefaultDevice(devJoypad);
 
@@ -645,17 +641,16 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
     gcPad->UpdateReferences(g_controller_interface);
     Pad::GetConfig()->SaveConfig();
   }
-  else if (!SConfig::GetInstance().m_bt_passthrough_enabled)
+  else
   {
     if (!Libretro::Options::altGCPorts) // Disconnect GC controller to avoid conflict with Wii device
     {
-      SConfig::GetInstance().m_SIDevice[port] = SerialInterface::SIDEVICE_NONE;
-      SerialInterface::ChangeDevice(SConfig::GetInstance().m_SIDevice[port], port);
+      si.ChangeDevice(SerialInterface::SIDEVICE_NONE, port);
     }
 
     WiimoteEmu::Wiimote* wm = (WiimoteEmu::Wiimote*)Wiimote::GetConfig()->GetController(port);
     // load an empty inifile section, clears everything
-    IniFile::Section sec;
+    Common::IniFile::Section sec;
     wm->LoadConfig(&sec);
     wm->SetDefaultDevice(devJoypad);
 

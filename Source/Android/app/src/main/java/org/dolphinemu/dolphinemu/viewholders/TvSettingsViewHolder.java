@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.viewholders;
+
+import android.view.View;
 
 import androidx.leanback.widget.ImageCardView;
 import androidx.leanback.widget.Presenter;
-
-import android.view.View;
 
 public final class TvSettingsViewHolder extends Presenter.ViewHolder
 {

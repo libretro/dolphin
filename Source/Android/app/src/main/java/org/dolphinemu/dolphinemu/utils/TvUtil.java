@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package org.dolphinemu.dolphinemu.utils;
 
 import android.annotation.TargetApi;
@@ -14,17 +16,15 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.VectorDrawable;
-import android.media.tv.TvContract;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PersistableBundle;
+import android.util.Log;
 
 import androidx.annotation.AnyRes;
 import androidx.annotation.NonNull;
 import androidx.tvprovider.media.tv.Channel;
 import androidx.tvprovider.media.tv.TvContractCompat;
-
-import android.util.Log;
 
 import org.dolphinemu.dolphinemu.model.GameFile;
 import org.dolphinemu.dolphinemu.model.HomeScreenChannel;
@@ -33,6 +33,7 @@ import org.dolphinemu.dolphinemu.services.SyncProgramsJobService;
 import org.dolphinemu.dolphinemu.ui.platform.Platform;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,8 +50,9 @@ public class TvUtil
 
   private static final String[] CHANNELS_PROJECTION = {
           TvContractCompat.Channels._ID,
-          TvContract.Channels.COLUMN_DISPLAY_NAME,
-          TvContractCompat.Channels.COLUMN_BROWSABLE
+          TvContractCompat.Channels.COLUMN_DISPLAY_NAME,
+          TvContractCompat.Channels.COLUMN_BROWSABLE,
+          TvContractCompat.Channels.COLUMN_APP_LINK_INTENT_URI
   };
   private static final String LEANBACK_PACKAGE = "com.google.android.tvlauncher";
 
@@ -123,11 +125,10 @@ public class TvUtil
           throws Resources.NotFoundException
   {
     Resources res = context.getResources();
-    Uri resUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE +
+    return Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE +
             "://" + res.getResourcePackageName(resId)
             + '/' + res.getResourceTypeName(resId)
             + '/' + res.getResourceEntryName(resId));
-    return resUri;
   }
 
   /**
@@ -154,26 +155,43 @@ public class TvUtil
   }
 
   /**
-   * Leanback lanucher requires a uri for poster art so we create a contentUri and
+   * Leanback launcher requires a uri for poster art so we create a contentUri and
    * pass that to LEANBACK_PACKAGE
    */
   public static Uri buildBanner(GameFile game, Context context)
   {
     Uri contentUri = null;
+    File cover;
 
     try
     {
-      File cover = new File(game.getCustomCoverPath());
-      if (cover.exists())
+      String customCoverPath = game.getCustomCoverPath();
+
+      if (ContentHandler.isContentUri(customCoverPath))
       {
-        contentUri = getUriForFile(context, getFileProvider(context), cover);
+        try
+        {
+          contentUri = ContentHandler.unmangle(customCoverPath);
+        }
+        catch (FileNotFoundException | SecurityException ignored)
+        {
+          // Let contentUri remain null
+        }
       }
-      else if ((cover = new File(game.getCoverPath(context))).exists())
+      else
       {
-        contentUri = getUriForFile(context, getFileProvider(context), cover);
+        if ((cover = new File(customCoverPath)).exists())
+        {
+          contentUri = getUriForFile(context, getFileProvider(context), cover);
+        }
       }
-      context.grantUriPermission(LEANBACK_PACKAGE, contentUri,
-              FLAG_GRANT_READ_URI_PERMISSION);
+
+      if (contentUri == null)
+      {
+        contentUri = Uri.parse(CoverHelper.buildGameTDBUrl(game, CoverHelper.getRegion(game)));
+      }
+
+      context.grantUriPermission(LEANBACK_PACKAGE, contentUri, FLAG_GRANT_READ_URI_PERMISSION);
     }
     catch (Exception e)
     {
@@ -253,22 +271,20 @@ public class TvUtil
   /**
    * Generates all subscriptions for homescreen channels.
    */
-  public static List<HomeScreenChannel> createUniversalSubscriptions()
+  public static List<HomeScreenChannel> createUniversalSubscriptions(Context context)
   {
-    //Leaving the subs local variable in case more channels are created other than platforms.
-    List<HomeScreenChannel> subs = new ArrayList<>(createPlatformSubscriptions());
-    return subs;
+    return new ArrayList<>(createPlatformSubscriptions(context));
   }
 
-  private static List<HomeScreenChannel> createPlatformSubscriptions()
+  private static List<HomeScreenChannel> createPlatformSubscriptions(Context context)
   {
     List<HomeScreenChannel> subs = new ArrayList<>();
     for (Platform platform : Platform.values())
     {
       subs.add(new HomeScreenChannel(
-              platform.getHeaderName(),
-              platform.getHeaderName(),
-              AppLinkHelper.buildBrowseUri(platform.getHeaderName()).toString()));
+              context.getString(platform.getHeaderName()),
+              context.getString(platform.getHeaderName()),
+              AppLinkHelper.buildBrowseUri(platform)));
     }
     return subs;
   }

@@ -1,6 +1,5 @@
 // Copyright 2018 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
@@ -73,6 +72,15 @@ enum class SeekMode : u32
 
 using FileAttribute = u8;
 
+struct NandRedirect
+{
+  // A Wii FS path, eg. "/title/00010000/534d4e45/data".
+  std::string source_path;
+
+  // An absolute host filesystem path the above should be redirected to.
+  std::string target_path;
+};
+
 struct Modes
 {
   Mode owner, group, other;
@@ -99,6 +107,33 @@ struct Metadata
   u16 fst_index;
 };
 
+// size of a single cluster in the NAND in bytes
+constexpr u16 CLUSTER_SIZE = 16384;
+
+// total number of clusters available in the NAND
+constexpr u16 TOTAL_CLUSTERS = 0x7ec0;
+
+// number of clusters reserved for bad blocks and similar, not accessible to normal writes
+constexpr u16 RESERVED_CLUSTERS = 0x0300;
+
+// number of clusters actually usable by the file system
+constexpr u16 USABLE_CLUSTERS = TOTAL_CLUSTERS - RESERVED_CLUSTERS;
+
+// size of a single 'block' as defined by the Wii System Menu in clusters
+constexpr u16 CLUSTERS_PER_BLOCK = 8;
+
+// total number of user-accessible blocks in the NAND
+constexpr u16 USER_BLOCKS = 2176;
+
+// total number of user-accessible clusters in the NAND
+constexpr u16 USER_CLUSTERS = USER_BLOCKS * CLUSTERS_PER_BLOCK;
+
+// the inverse of that, the amount of usable clusters reserved for system files
+constexpr u16 SYSTEM_CLUSTERS = USABLE_CLUSTERS - USER_CLUSTERS;
+
+// total number of inodes available in the NAND
+constexpr u16 TOTAL_INODES = 0x17ff;
+
 struct NandStats
 {
   u32 cluster_size;
@@ -116,6 +151,14 @@ struct DirectoryStats
   u32 used_inodes;
 };
 
+// Not a real Wii data struct, but useful for calculating how full the user's NAND is even if it's
+// way larger than it should be.
+struct ExtendedDirectoryStats
+{
+  u64 used_clusters;
+  u64 used_inodes;
+};
+
 struct FileStatus
 {
   u32 offset;
@@ -126,10 +169,13 @@ struct FileStatus
 constexpr size_t MaxPathDepth = 8;
 /// The maximum number of characters a path can have.
 constexpr size_t MaxPathLength = 64;
+/// The maximum number of characters a filename can have.
+constexpr size_t MaxFilenameLength = 12;
 
 /// Returns whether a Wii path is valid.
 bool IsValidPath(std::string_view path);
 bool IsValidNonRootPath(std::string_view path);
+bool IsValidFilename(std::string_view filename);
 
 struct SplitPathResult
 {
@@ -205,6 +251,7 @@ public:
   /// Reposition the file offset for a file descriptor.
   virtual Result<u32> SeekFile(Fd fd, u32 offset, SeekMode mode) = 0;
   /// Get status for a file descriptor.
+  /// Guaranteed to succeed for a valid file descriptor.
   virtual Result<FileStatus> GetFileStatus(Fd fd) = 0;
 
   /// Create a file with the specified path and metadata.
@@ -239,6 +286,11 @@ public:
   virtual Result<NandStats> GetNandStats() = 0;
   /// Get usage information about a directory (used cluster and inode counts).
   virtual Result<DirectoryStats> GetDirectoryStats(const std::string& path) = 0;
+
+  /// Like GetDirectoryStats() but not limited to the actual 512 MB NAND limit.
+  virtual Result<ExtendedDirectoryStats> GetExtendedDirectoryStats(const std::string& path) = 0;
+
+  virtual void SetNandRedirects(std::vector<NandRedirect> nand_redirects) = 0;
 };
 
 template <typename T>
@@ -269,7 +321,8 @@ enum class Location
   Session,
 };
 
-std::unique_ptr<FileSystem> MakeFileSystem(Location location = Location::Session);
+std::unique_ptr<FileSystem> MakeFileSystem(Location location = Location::Session,
+                                           std::vector<NandRedirect> nand_redirects = {});
 
 /// Convert a FS result code to an IOS error code.
 IOS::HLE::ReturnCode ConvertResult(ResultCode code);

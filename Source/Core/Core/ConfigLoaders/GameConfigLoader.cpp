@@ -1,6 +1,5 @@
 // Copyright 2016 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/ConfigLoaders/GameConfigLoader.h"
 
@@ -25,7 +24,9 @@
 #include "Common/MsgHandler.h"
 #include "Common/StringUtil.h"
 
+#include "Core/Config/MainSettings.h"
 #include "Core/Config/SYSCONFSettings.h"
+#include "Core/Config/WiimoteSettings.h"
 #include "Core/ConfigLoaders/IsSettingSaveable.h"
 
 namespace ConfigLoaders
@@ -69,10 +70,21 @@ using INIToSectionMap = std::map<std::string, std::pair<Config::System, std::str
 static const INIToLocationMap& GetINIToLocationMap()
 {
   static const INIToLocationMap ini_to_location = {
-      {{"Core", "ProgressiveScan"}, {Config::SYSCONF_PROGRESSIVE_SCAN.location}},
-      {{"Core", "PAL60"}, {Config::SYSCONF_PAL60.location}},
-      {{"Wii", "Widescreen"}, {Config::SYSCONF_WIDESCREEN.location}},
-      {{"Wii", "Language"}, {Config::SYSCONF_LANGUAGE.location}},
+      {{"Core", "ProgressiveScan"}, {Config::SYSCONF_PROGRESSIVE_SCAN.GetLocation()}},
+      {{"Core", "PAL60"}, {Config::SYSCONF_PAL60.GetLocation()}},
+      {{"Wii", "Widescreen"}, {Config::SYSCONF_WIDESCREEN.GetLocation()}},
+      {{"Wii", "Language"}, {Config::SYSCONF_LANGUAGE.GetLocation()}},
+      {{"Core", "HLE_BS2"}, {Config::MAIN_SKIP_IPL.GetLocation()}},
+      {{"Core", "GameCubeLanguage"}, {Config::MAIN_GC_LANGUAGE.GetLocation()}},
+      {{"Controls", "PadType0"}, {Config::GetInfoForSIDevice(0).GetLocation()}},
+      {{"Controls", "PadType1"}, {Config::GetInfoForSIDevice(1).GetLocation()}},
+      {{"Controls", "PadType2"}, {Config::GetInfoForSIDevice(2).GetLocation()}},
+      {{"Controls", "PadType3"}, {Config::GetInfoForSIDevice(3).GetLocation()}},
+      {{"Controls", "WiimoteSource0"}, {Config::WIIMOTE_1_SOURCE.GetLocation()}},
+      {{"Controls", "WiimoteSource1"}, {Config::WIIMOTE_2_SOURCE.GetLocation()}},
+      {{"Controls", "WiimoteSource2"}, {Config::WIIMOTE_3_SOURCE.GetLocation()}},
+      {{"Controls", "WiimoteSource3"}, {Config::WIIMOTE_4_SOURCE.GetLocation()}},
+      {{"Controls", "WiimoteSourceBB"}, {Config::WIIMOTE_BB_SOURCE.GetLocation()}},
   };
   return ini_to_location;
 }
@@ -84,6 +96,7 @@ static const INIToSectionMap& GetINIToSectionMap()
 {
   static const INIToSectionMap ini_to_section = {
       {"Core", {Config::System::Main, "Core"}},
+      {"DSP", {Config::System::Main, "DSP"}},
       {"Display", {Config::System::Main, "Display"}},
       {"Video_Hardware", {Config::System::GFX, "Hardware"}},
       {"Video_Settings", {Config::System::GFX, "Settings"}},
@@ -91,6 +104,7 @@ static const INIToSectionMap& GetINIToSectionMap()
       {"Video_Stereoscopy", {Config::System::GFX, "Stereoscopy"}},
       {"Video_Hacks", {Config::System::GFX, "Hacks"}},
       {"Video", {Config::System::GFX, "GameSpecific"}},
+      {"Controls", {Config::System::GameSettingsOnly, "Controls"}},
   };
   return ini_to_section;
 }
@@ -126,7 +140,7 @@ static Location MapINIToRealLocation(const std::string& section, const std::stri
   if (!fail && system)
     return {*system, config_section, key};
 
-  WARN_LOG(CORE, "Unknown game INI option in section %s: %s", section.c_str(), key.c_str());
+  WARN_LOG_FMT(CORE, "Unknown game INI option in section {}: {}", section, key);
   return {Config::System::Main, "", ""};
 }
 
@@ -161,7 +175,7 @@ public:
 
   void Load(Config::Layer* layer) override
   {
-    IniFile ini;
+    Common::IniFile ini;
     if (layer->GetLayer() == Config::LayerType::GlobalGame)
     {
       for (const std::string& filename : GetGameIniFilenames(m_id, m_revision))
@@ -173,7 +187,7 @@ public:
         ini.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + filename, true);
     }
 
-    const std::list<IniFile::Section>& system_sections = ini.GetSections();
+    const auto& system_sections = ini.GetSections();
 
     for (const auto& section : system_sections)
     {
@@ -216,15 +230,15 @@ private:
           if (!File::Exists(ini_path))
           {
             // TODO: PanicAlert shouldn't be used for this.
-            PanicAlertT("Selected controller profile does not exist");
+            PanicAlertFmtT("Selected controller profile does not exist");
             continue;
           }
 
-          IniFile profile_ini;
+          Common::IniFile profile_ini;
           profile_ini.Load(ini_path);
 
-          const IniFile::Section* ini_section = profile_ini.GetOrCreateSection("Profile");
-          const IniFile::Section::SectionMap& section_map = ini_section->GetValues();
+          const auto* ini_section = profile_ini.GetOrCreateSection("Profile");
+          const auto& section_map = ini_section->GetValues();
           for (const auto& value : section_map)
           {
             Config::Location location{std::get<2>(use_data), std::get<1>(use_data) + num,
@@ -236,18 +250,21 @@ private:
     }
   }
 
-  void LoadFromSystemSection(Config::Layer* layer, const IniFile::Section& section) const
+  void LoadFromSystemSection(Config::Layer* layer, const Common::IniFile::Section& section) const
   {
     const std::string section_name = section.GetName();
 
     // Regular key,value pairs
-    const IniFile::Section::SectionMap& section_map = section.GetValues();
+    const auto& section_map = section.GetValues();
 
     for (const auto& value : section_map)
     {
       const auto location = MapINIToRealLocation(section_name, value.first);
 
       if (location.section.empty() && location.key.empty())
+        continue;
+
+      if (location.system == Config::System::Session)
         continue;
 
       layer->Set(location, value.second);
@@ -263,7 +280,7 @@ void INIGameConfigLayerLoader::Save(Config::Layer* layer)
   if (layer->GetLayer() != Config::LayerType::LocalGame)
     return;
 
-  IniFile ini;
+  Common::IniFile ini;
   for (const std::string& file_name : GetGameIniFilenames(m_id, m_revision))
     ini.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + file_name, true);
 
@@ -272,7 +289,7 @@ void INIGameConfigLayerLoader::Save(Config::Layer* layer)
     const Config::Location& location = config.first;
     const std::optional<std::string>& value = config.second;
 
-    if (!IsSettingSaveable(location))
+    if (!IsSettingSaveable(location) || location.system == Config::System::Session)
       continue;
 
     const auto ini_location = GetINILocationFromConfig(location);
@@ -281,7 +298,7 @@ void INIGameConfigLayerLoader::Save(Config::Layer* layer)
 
     if (value)
     {
-      IniFile::Section* ini_section = ini.GetOrCreateSection(ini_location.first);
+      auto* ini_section = ini.GetOrCreateSection(ini_location.first);
       ini_section->Set(ini_location.second, *value);
     }
     else

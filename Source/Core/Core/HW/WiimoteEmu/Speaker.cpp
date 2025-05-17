@@ -1,6 +1,5 @@
 // Copyright 2010 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/HW/WiimoteEmu/Speaker.h"
 
@@ -12,6 +11,7 @@
 #include "Common/MathUtil.h"
 #include "Core/ConfigManager.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
+#include "Core/System.h"
 #include "InputCommon/ControllerEmu/ControlGroup/ControlGroup.h"
 #include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 
@@ -74,7 +74,7 @@ void stopdamnwav()
 void SpeakerLogic::SpeakerData(const u8* data, int length, float speaker_pan)
 {
   // TODO: should we still process samples for the decoder state?
-  if (!SConfig::GetInstance().m_WiimoteEnableSpeaker)
+  if (!m_speaker_enabled)
     return;
 
   if (reg_data.sample_rate == 0 || length == 0)
@@ -117,32 +117,40 @@ void SpeakerLogic::SpeakerData(const u8* data, int length, float speaker_pan)
   }
   else
   {
-    ERROR_LOG(IOS_WIIMOTE, "Unknown speaker format %x", reg_data.format);
+    ERROR_LOG_FMT(IOS_WIIMOTE, "Unknown speaker format {:x}", reg_data.format);
     return;
   }
 
   if (reg_data.volume > volume_divisor)
   {
-    DEBUG_LOG(IOS_WIIMOTE, "Wiimote volume is higher than suspected maximum!");
+    DEBUG_LOG_FMT(IOS_WIIMOTE, "Wiimote volume is higher than suspected maximum!");
     volume_divisor = reg_data.volume;
   }
 
   // SetWiimoteSpeakerVolume expects values from 0 to 255.
-  // Multiply by 256, cast to int, and clamp to 255 for a uniform conversion.
-  const double volume = float(reg_data.volume) / volume_divisor * 256;
+  // Multiply by 256, floor to int, and clamp to 255 for a uniformly mapped conversion.
+  const double volume = float(reg_data.volume) * 256.f / volume_divisor;
 
-  // Speaker pan using "Constant Power Pan Law"
-  const double pan_prime = MathUtil::PI * (speaker_pan + 1) / 4;
+  // This used the "Constant Power Pan Law", but it is undesirable
+  // if the pan is 0, and it implied that the loudness of a wiimote speaker
+  // is equal to the loudness of your device speakers, which isn't true at all.
+  // This way, if the pan is 0, it's like if it is not there.
+  // We should play the samples from the wiimote at the native volume they came with,
+  // because you can lower their volume from the Wii settings and because they are
+  // already extremely low quality, so any additional quality loss isn't welcome.
+  speaker_pan = std::clamp(speaker_pan, -1.f, 1.f);
+  const u32 l_volume = std::min(u32(std::min(1.f - speaker_pan, 1.f) * volume), 255u);
+  const u32 r_volume = std::min(u32(std::min(1.f + speaker_pan, 1.f) * volume), 255u);
 
-  const auto left_volume = std::min(int(std::cos(pan_prime) * volume), 255);
-  const auto right_volume = std::min(int(std::sin(pan_prime) * volume), 255);
+  auto& system = Core::System::GetInstance();
+  SoundStream* sound_stream = system.GetSoundStream();
 
-  g_sound_stream->GetMixer()->SetWiimoteSpeakerVolume(left_volume, right_volume);
+  sound_stream->GetMixer()->SetWiimoteSpeakerVolume(l_volume, r_volume);
 
   // ADPCM sample rate is thought to be x2.(3000 x2 = 6000).
   const unsigned int sample_rate = sample_rate_dividend / reg_data.sample_rate;
-  g_sound_stream->GetMixer()->PushWiimoteSpeakerSamples(samples.get(), sample_length,
-                                                        sample_rate * 2);
+  sound_stream->GetMixer()->PushWiimoteSpeakerSamples(
+      samples.get(), sample_length, Mixer::FIXED_SAMPLE_RATE_DIVIDEND / (sample_rate * 2));
 
 #ifdef WIIMOTE_SPEAKER_DUMP
   static int num = 0;
@@ -180,6 +188,11 @@ void SpeakerLogic::DoState(PointerWrap& p)
 {
   p.Do(adpcm_state);
   p.Do(reg_data);
+}
+
+void SpeakerLogic::SetSpeakerEnabled(bool enabled)
+{
+  m_speaker_enabled = enabled;
 }
 
 int SpeakerLogic::BusRead(u8 slave_addr, u8 addr, int count, u8* data_out)

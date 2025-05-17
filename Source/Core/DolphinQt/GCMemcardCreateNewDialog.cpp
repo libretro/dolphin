@@ -1,12 +1,10 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinQt/GCMemcardCreateNewDialog.h"
 
 #include <QComboBox>
 #include <QDialogButtonBox>
-#include <QFileDialog>
 #include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -19,6 +17,8 @@
 #include "Core/HW/EXI/EXI_DeviceIPL.h"
 #include "Core/HW/GCMemcard/GCMemcard.h"
 #include "Core/HW/Sram.h"
+
+#include "DolphinQt/QtUtils/DolphinFileDialog.h"
 
 GCMemcardCreateNewDialog::GCMemcardCreateNewDialog(QWidget* parent) : QDialog(parent)
 {
@@ -70,17 +70,16 @@ bool GCMemcardCreateNewDialog::CreateCard()
   const u16 size = static_cast<u16>(m_combobox_size->currentData().toInt());
   const bool is_shift_jis = m_radio_shiftjis->isChecked();
 
-  const QString path = QFileDialog::getSaveFileName(
+  const QString path = DolphinFileDialog::getSaveFileName(
       this, tr("Create New Memory Card"), QString::fromStdString(File::GetUserPath(D_GCUSER_IDX)),
       tr("GameCube Memory Cards (*.raw *.gcp)") + QStringLiteral(";;") + tr("All Files (*)"));
 
   if (path.isEmpty())
     return false;
 
-  // TODO: The dependency on g_SRAM here is sketchy. We should instead use sensible default values.
-  const CardFlashId& flash_id = g_SRAM.settings_ex.flash_id[Memcard::SLOT_A];
-  const u32 rtc_bias = g_SRAM.settings.rtc_bias;
-  const u32 sram_language = static_cast<u32>(g_SRAM.settings.language);
+  const CardFlashId flash_id{};
+  const u32 rtc_bias = 0;
+  const u32 sram_language = 0;
   const u64 format_time =
       Common::Timer::GetLocalTimeSinceJan1970() - ExpansionInterface::CEXIIPL::GC_EPOCH;
 

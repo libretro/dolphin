@@ -1,6 +1,5 @@
 // Copyright 2011 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/VideoBackendBase.h"
 
@@ -10,22 +9,19 @@
 #include <string>
 #include <vector>
 
-#include "fmt/format.h"
+#include <fmt/format.h>
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
-#include "Common/Config/Config.h"
 #include "Common/Event.h"
+#include "Common/FileUtil.h"
 #include "Common/Logging/Log.h"
 
 #include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
-
-// OpenGL is not available on Windows-on-ARM64
-#if !defined(_WIN32) || !defined(_M_ARM64)
-#define HAS_OPENGL 1
-#endif
+#include "Core/DolphinAnalytics.h"
+#include "Core/System.h"
 
 // TODO: ugly
 #ifdef _WIN32
@@ -37,20 +33,31 @@
 #include "VideoBackends/OGL/VideoBackend.h"
 #include "VideoBackends/Software/VideoBackend.h"
 #endif
+#ifdef HAS_VULKAN
 #include "VideoBackends/Vulkan/VideoBackend.h"
+#endif
+#ifdef __APPLE__
+#include "VideoBackends/Metal/VideoBackend.h"
+#endif
 
-#include "Core/Core.h"
+#include "VideoCommon/AbstractGfx.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/BPStructs.h"
+#include "VideoCommon/BoundingBox.h"
 #include "VideoCommon/CPMemory.h"
 #include "VideoCommon/CommandProcessor.h"
 #include "VideoCommon/Fifo.h"
+#include "VideoCommon/FrameDumper.h"
+#include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/GeometryShaderManager.h"
+#include "VideoCommon/GraphicsModSystem/Runtime/GraphicsModManager.h"
 #include "VideoCommon/IndexGenerator.h"
 #include "VideoCommon/OpcodeDecoding.h"
 #include "VideoCommon/PixelEngine.h"
 #include "VideoCommon/PixelShaderManager.h"
+#include "VideoCommon/Present.h"
 #include "VideoCommon/RenderBase.h"
+#include "VideoCommon/TMEM.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "VideoCommon/VertexLoaderManager.h"
 #include "VideoCommon/VertexManagerBase.h"
@@ -58,10 +65,9 @@
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/VideoState.h"
+#include "VideoCommon/Widescreen.h"
 
-std::vector<std::unique_ptr<VideoBackendBase>> g_available_video_backends;
 VideoBackendBase* g_video_backend = nullptr;
-static VideoBackendBase* s_default_backend = nullptr;
 
 #ifdef _WIN32
 #include <windows.h>
@@ -69,8 +75,11 @@ static VideoBackendBase* s_default_backend = nullptr;
 // Nvidia drivers >= v302 will check if the application exports a global
 // variable named NvOptimusEnablement to know if it should run the app in high
 // performance graphics mode or using the IGP.
+// AMD drivers >= 13.35 do the same, but for the variable
+// named AmdPowerXpressRequestHighPerformance instead.
 extern "C" {
 __declspec(dllexport) DWORD NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
 #endif
 
@@ -82,16 +91,18 @@ std::string VideoBackendBase::BadShaderFilename(const char* shader_stage, int co
 
 void VideoBackendBase::Video_ExitLoop()
 {
-  Fifo::ExitGpuLoop();
+  auto& system = Core::System::GetInstance();
+  system.GetFifo().ExitGpuLoop(system);
 }
 
 // Run from the CPU thread (from VideoInterface.cpp)
-void VideoBackendBase::Video_BeginField(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
-                                        u64 ticks)
+void VideoBackendBase::Video_OutputXFB(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
+                                       u64 ticks)
 {
-  if (m_initialized && g_renderer && !g_ActiveConfig.bImmediateXFB)
+  if (m_initialized && g_presenter && !g_ActiveConfig.bImmediateXFB)
   {
-    Fifo::SyncGPU(Fifo::SyncGPUReason::Swap);
+    auto& system = Core::System::GetInstance();
+    system.GetFifo().SyncGPU(Fifo::SyncGPUReason::Swap);
 
     AsyncRequests::Event e;
     e.time = ticks;
@@ -146,7 +157,8 @@ u32 VideoBackendBase::Video_GetQueryResult(PerfQueryType type)
     return 0;
   }
 
-  Fifo::SyncGPU(Fifo::SyncGPUReason::PerfQuery);
+  auto& system = Core::System::GetInstance();
+  system.GetFifo().SyncGPU(Fifo::SyncGPUReason::PerfQuery);
 
   AsyncRequests::Event e;
   e.time = 0;
@@ -160,32 +172,34 @@ u32 VideoBackendBase::Video_GetQueryResult(PerfQueryType type)
 
 u16 VideoBackendBase::Video_GetBoundingBox(int index)
 {
+  DolphinAnalytics::Instance().ReportGameQuirk(GameQuirk::READS_BOUNDING_BOX);
+
   if (!g_ActiveConfig.bBBoxEnable)
   {
     static bool warn_once = true;
     if (warn_once)
     {
-      ERROR_LOG(VIDEO, "BBox shall be used but it is disabled. Please use a gameini to enable it "
-                       "for this game.");
+      ERROR_LOG_FMT(VIDEO,
+                    "BBox shall be used but it is disabled. Please use a gameini to enable it "
+                    "for this game.");
     }
     warn_once = false;
-    return 0;
   }
-
-  if (!g_ActiveConfig.backend_info.bSupportsBBox)
+  else if (!g_ActiveConfig.backend_info.bSupportsBBox)
   {
     static bool warn_once = true;
     if (warn_once)
     {
-      PanicAlertT("This game requires bounding box emulation to run properly but your graphics "
-                  "card or its drivers do not support it. As a result you will experience bugs or "
-                  "freezes while running this game.");
+      PanicAlertFmtT(
+          "This game requires bounding box emulation to run properly but your graphics "
+          "card or its drivers do not support it. As a result you will experience bugs or "
+          "freezes while running this game.");
     }
     warn_once = false;
-    return 0;
   }
 
-  Fifo::SyncGPU(Fifo::SyncGPUReason::BBox);
+  auto& system = Core::System::GetInstance();
+  system.GetFifo().SyncGPU(Fifo::SyncGPUReason::BBox);
 
   AsyncRequests::Event e;
   u16 result;
@@ -198,74 +212,101 @@ u16 VideoBackendBase::Video_GetBoundingBox(int index)
   return result;
 }
 
-void VideoBackendBase::PopulateList()
+static VideoBackendBase* GetDefaultVideoBackend()
 {
-  // OGL > D3D11 > Vulkan > SW > Null
-#ifdef HAS_OPENGL
-  g_available_video_backends.push_back(std::make_unique<OGL::VideoBackend>());
-#endif
-#ifdef _WIN32
-  g_available_video_backends.push_back(std::make_unique<DX11::VideoBackend>());
-  g_available_video_backends.push_back(std::make_unique<DX12::VideoBackend>());
-#endif
-  g_available_video_backends.push_back(std::make_unique<Vulkan::VideoBackend>());
-#ifdef HAS_OPENGL
-  g_available_video_backends.push_back(std::make_unique<SW::VideoSoftware>());
-#endif
-  g_available_video_backends.push_back(std::make_unique<Null::VideoBackend>());
-
-  const auto iter =
-      std::find_if(g_available_video_backends.begin(), g_available_video_backends.end(),
-                   [](const auto& backend) { return backend != nullptr; });
-
-  if (iter == g_available_video_backends.end())
-    return;
-
-  s_default_backend = iter->get();
-  g_video_backend = iter->get();
+  const auto& backends = VideoBackendBase::GetAvailableBackends();
+  if (backends.empty())
+    return nullptr;
+  return backends.front().get();
 }
 
-void VideoBackendBase::ClearList()
+std::string VideoBackendBase::GetDefaultBackendName()
 {
-  g_available_video_backends.clear();
+  auto* default_backend = GetDefaultVideoBackend();
+  return default_backend ? default_backend->GetName() : "";
+}
+
+const std::vector<std::unique_ptr<VideoBackendBase>>& VideoBackendBase::GetAvailableBackends()
+{
+  static auto s_available_backends = [] {
+    std::vector<std::unique_ptr<VideoBackendBase>> backends;
+
+    // OGL > D3D11 > D3D12 > Vulkan > SW > Null
+    // On macOS, we prefer Vulkan over OpenGL due to OpenGL support being deprecated by Apple.
+#ifdef HAS_OPENGL
+    backends.push_back(std::make_unique<OGL::VideoBackend>());
+#endif
+#ifdef _WIN32
+    backends.push_back(std::make_unique<DX11::VideoBackend>());
+    backends.push_back(std::make_unique<DX12::VideoBackend>());
+#endif
+#ifdef HAS_VULKAN
+#ifdef __APPLE__
+    // Emplace the Vulkan backend at the beginning so it takes precedence over OpenGL.
+    backends.emplace(backends.begin(), std::make_unique<Vulkan::VideoBackend>());
+#else
+    backends.push_back(std::make_unique<Vulkan::VideoBackend>());
+#endif
+#endif
+#ifdef __APPLE__
+    backends.emplace(backends.begin(), std::make_unique<Metal::VideoBackend>());
+#endif
+#ifdef HAS_OPENGL
+    backends.push_back(std::make_unique<SW::VideoSoftware>());
+#endif
+    backends.push_back(std::make_unique<Null::VideoBackend>());
+
+    if (!backends.empty())
+      g_video_backend = backends.front().get();
+
+    return backends;
+  }();
+  return s_available_backends;
 }
 
 void VideoBackendBase::ActivateBackend(const std::string& name)
 {
   // If empty, set it to the default backend (expected behavior)
   if (name.empty())
-    g_video_backend = s_default_backend;
+    g_video_backend = GetDefaultVideoBackend();
 
-  const auto iter =
-      std::find_if(g_available_video_backends.begin(), g_available_video_backends.end(),
-                   [&name](const auto& backend) { return name == backend->GetName(); });
+  const auto& backends = GetAvailableBackends();
+  const auto iter = std::find_if(backends.begin(), backends.end(), [&name](const auto& backend) {
+    return name == backend->GetName();
+  });
 
-  if (iter == g_available_video_backends.end())
+  if (iter == backends.end())
     return;
 
   g_video_backend = iter->get();
 }
 
-void VideoBackendBase::PopulateBackendInfo()
+void VideoBackendBase::PopulateBackendInfo(const WindowSystemInfo& wsi)
 {
-  // We refresh the config after initializing the backend info, as system-specific settings
-  // such as anti-aliasing, or the selected adapter may be invalid, and should be checked.
-  ActivateBackend(Config::Get(Config::MAIN_GFX_BACKEND));
-  g_video_backend->InitBackendInfo();
   g_Config.Refresh();
+  // Reset backend_info so if the backend forgets to initialize something it doesn't end up using
+  // a value from the previously used renderer
+  g_Config.backend_info = {};
+  ActivateBackend(Config::Get(Config::MAIN_GFX_BACKEND));
+  g_Config.backend_info.DisplayName = g_video_backend->GetDisplayName();
+  g_video_backend->InitBackendInfo(wsi);
+  // We validate the config after initializing the backend info, as system-specific settings
+  // such as anti-aliasing, or the selected adapter may be invalid, and should be checked.
+  g_Config.VerifyValidity();
 }
 
-void VideoBackendBase::PopulateBackendInfoFromUI()
+void VideoBackendBase::PopulateBackendInfoFromUI(const WindowSystemInfo& wsi)
 {
   // If the core is running, the backend info will have been populated already.
   // If we did it here, the UI thread can race with the with the GPU thread.
   if (!Core::IsRunning())
-    PopulateBackendInfo();
+    PopulateBackendInfo(wsi);
 }
 
 void VideoBackendBase::DoState(PointerWrap& p)
 {
-  if (!SConfig::GetInstance().bCPUThread)
+  auto& system = Core::System::GetInstance();
+  if (!system.IsDualCoreMode())
   {
     VideoCommon_DoState(p);
     return;
@@ -278,48 +319,107 @@ void VideoBackendBase::DoState(PointerWrap& p)
 
   // Let the GPU thread sleep after loading the state, so we're not spinning if paused after loading
   // a state. The next GP burst will wake it up again.
-  Fifo::GpuMaySleep();
+  system.GetFifo().GpuMaySleep();
 }
 
-void VideoBackendBase::InitializeShared()
+bool VideoBackendBase::InitializeShared(std::unique_ptr<AbstractGfx> gfx,
+                                        std::unique_ptr<VertexManagerBase> vertex_manager,
+                                        std::unique_ptr<PerfQueryBase> perf_query,
+                                        std::unique_ptr<BoundingBox> bounding_box)
 {
-  if (m_initialized)
-  {
-    VertexLoaderManager::Init();
-    return;
-  }
+  // All hardware backends use the default RendererBase and TextureCacheBase.
+  // Only Null and Software backends override them
 
-  memset(&g_main_cp_state, 0, sizeof(g_main_cp_state));
-  memset(&g_preprocess_cp_state, 0, sizeof(g_preprocess_cp_state));
+  return InitializeShared(std::move(gfx), std::move(vertex_manager), std::move(perf_query),
+                          std::move(bounding_box), std::make_unique<Renderer>(),
+                          std::make_unique<TextureCacheBase>());
+}
+
+bool VideoBackendBase::InitializeShared(std::unique_ptr<AbstractGfx> gfx,
+                                        std::unique_ptr<VertexManagerBase> vertex_manager,
+                                        std::unique_ptr<PerfQueryBase> perf_query,
+                                        std::unique_ptr<BoundingBox> bounding_box,
+                                        std::unique_ptr<Renderer> renderer,
+                                        std::unique_ptr<TextureCacheBase> texture_cache)
+{
+  memset(reinterpret_cast<u8*>(&g_main_cp_state), 0, sizeof(g_main_cp_state));
+  memset(reinterpret_cast<u8*>(&g_preprocess_cp_state), 0, sizeof(g_preprocess_cp_state));
   memset(texMem, 0, TMEM_SIZE);
 
   // do not initialize again for the config window
   m_initialized = true;
 
-  CommandProcessor::Init();
-  Fifo::Init();
-  OpcodeDecoder::Init();
-  PixelEngine::Init();
+  g_gfx = std::move(gfx);
+  g_vertex_manager = std::move(vertex_manager);
+  g_perf_query = std::move(perf_query);
+  g_bounding_box = std::move(bounding_box);
+
+  // Null and Software Backends supply their own derived Renderer and Texture Cache
+  g_texture_cache = std::move(texture_cache);
+  g_renderer = std::move(renderer);
+
+  g_presenter = std::make_unique<VideoCommon::Presenter>();
+  g_frame_dumper = std::make_unique<FrameDumper>();
+  g_framebuffer_manager = std::make_unique<FramebufferManager>();
+  g_shader_cache = std::make_unique<VideoCommon::ShaderCache>();
+  g_graphics_mod_manager = std::make_unique<GraphicsModManager>();
+  g_widescreen = std::make_unique<WidescreenManager>();
+
+  if (!g_vertex_manager->Initialize() || !g_shader_cache->Initialize() ||
+      !g_perf_query->Initialize() || !g_presenter->Initialize() ||
+      !g_framebuffer_manager->Initialize() || !g_texture_cache->Initialize() ||
+      !g_bounding_box->Initialize() || !g_graphics_mod_manager->Initialize())
+  {
+    PanicAlertFmtT("Failed to initialize renderer classes");
+    Shutdown();
+    return false;
+  }
+
+  auto& system = Core::System::GetInstance();
+  auto& command_processor = system.GetCommandProcessor();
+  command_processor.Init(system);
+  system.GetFifo().Init(system);
+  system.GetPixelEngine().Init(system);
   BPInit();
   VertexLoaderManager::Init();
-  VertexShaderManager::Init();
-  GeometryShaderManager::Init();
-  PixelShaderManager::Init();
+  system.GetVertexShaderManager().Init();
+  system.GetGeometryShaderManager().Init();
+  system.GetPixelShaderManager().Init();
+  TMEM::Init();
 
   g_Config.VerifyValidity();
   UpdateActiveConfig();
+
+  g_shader_cache->InitializeShaderCache();
+
+  return true;
 }
 
 void VideoBackendBase::ShutdownShared()
 {
-  if (Core::IsRunning())
-  {
-    VertexLoaderManager::Clear();
-    return;
-  }
+  g_frame_dumper.reset();
+  g_presenter.reset();
+
+  if (g_shader_cache)
+    g_shader_cache->Shutdown();
+  if (g_texture_cache)
+    g_texture_cache->Shutdown();
+
+  g_bounding_box.reset();
+  g_perf_query.reset();
+  g_graphics_mod_manager.reset();
+  g_texture_cache.reset();
+  g_framebuffer_manager.reset();
+  g_shader_cache.reset();
+  g_vertex_manager.reset();
+  g_renderer.reset();
+  g_widescreen.reset();
+  g_presenter.reset();
+  g_gfx.reset();
 
   m_initialized = false;
 
+  auto& system = Core::System::GetInstance();
   VertexLoaderManager::Clear();
-  Fifo::Shutdown();
+  system.GetFifo().Shutdown();
 }

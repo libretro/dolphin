@@ -1,6 +1,5 @@
 // Copyright 2019 Dolphin Emulator Project
-// Licensed under GPLv2+
-// Refer to the license.txt file included.
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "VideoCommon/NetPlayChatUI.h"
 
@@ -46,7 +45,7 @@ void NetPlayChatUI::Display()
 
   if (m_scroll_to_bottom)
   {
-    ImGui::SetScrollHere(1.0f);
+    ImGui::SetScrollHereY(1.0f);
     m_scroll_to_bottom = false;
   }
 
@@ -58,7 +57,7 @@ void NetPlayChatUI::Display()
 
   ImGui::PushItemWidth(-50.0f * scale);
 
-  if (ImGui::InputText("", m_message_buf, IM_ARRAYSIZE(m_message_buf),
+  if (ImGui::InputText("##NetplayMessageBuffer", m_message_buf, IM_ARRAYSIZE(m_message_buf),
                        ImGuiInputTextFlags_EnterReturnsTrue))
   {
     SendMessage();

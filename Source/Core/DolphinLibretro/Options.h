@@ -102,7 +102,7 @@ extern Option<int> maxAnisotropy;
 extern Option<bool> skipDupeFrames;
 extern Option<bool> immediatexfb;
 extern Option<bool> efbScaledCopy;
-extern Option<bool> forceTextureFiltering;
+extern Option<TextureFilteringMode> forceTextureFilteringMode;
 extern Option<bool> efbToTexture;
 extern Option<int> textureCacheAccuracy;
 extern Option<bool> gpuTextureDecoding;
@@ -130,6 +130,6 @@ extern Option<bool> DSPEnableJIT;
 extern Option<DiscIO::Language> Language;
 extern Option<bool> cheatsEnabled;
 extern Option<bool> osdEnabled;
-extern Option<Common::Log::LOG_LEVELS> logLevel;
+extern Option<Common::Log::LogLevel> logLevel;
 }  // namespace Options
 }  // namespace Libretro
