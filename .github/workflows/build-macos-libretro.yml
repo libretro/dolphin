@@ -1,0 +1,68 @@
+name: Build Dolphin (libretro) on macOS
+
+on:
+  - push
+  - pull_request
+
+env:
+  core_id: dolphin_libretro
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "macOS x86_64"
+            os: macos-13
+            CMAKE_OSX_ARCHITECTURES: x86_64
+            ZIP_NAME_SUFFIX: macos_x64
+          - name: "macOS arm64"
+            os: macos-14
+            CMAKE_OSX_ARCHITECTURES: arm64
+            ZIP_NAME_SUFFIX: macos_arm64
+
+    steps:
+      - name: Checkout Dolphin (libretro) repo
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.core_id }}
+
+      - name: Init submodules
+        run: |
+          cd ${{ env.core_id }}
+          git submodule update --init --recursive
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install cmake ninja pkg-config
+
+      - name: Configure
+        run: |
+          cd ${{ env.core_id }}
+          mkdir -p build && cd build
+          cmake .. \
+            -DLIBRETRO=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.CMAKE_OSX_ARCHITECTURES }} \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+
+      - name: Build
+        run: |
+          cd ${{ env.core_id }}/build
+          make -j$(sysctl -n hw.logicalcpu)
+
+      - name: Package core
+        run: |
+          mkdir -p artifacts
+          cp ${{ env.core_id }}/build/dolphin_libretro.dylib artifacts/${{ env.core_id }}_${{ matrix.ZIP_NAME_SUFFIX }}.dylib
+          cd artifacts
+          zip ${{ env.core_id }}_${{ matrix.ZIP_NAME_SUFFIX }}.zip ${{ env.core_id }}_${{ matrix.ZIP_NAME_SUFFIX }}.dylib
+
+      - name: Upload zipped artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.core_id }}_${{ matrix.ZIP_NAME_SUFFIX }}.zip
+          path: artifacts/${{ env.core_id }}_${{ matrix.ZIP_NAME_SUFFIX }}.zip
