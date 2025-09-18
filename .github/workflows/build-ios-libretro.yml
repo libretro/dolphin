@@ -1,0 +1,86 @@
+name: Build RetroArch (with Dolphin core) for iOS & tvOS
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: iOS
+            sdk: iphoneos
+            destination: "generic/platform=iOS"
+            product_dir: Release-iphoneos
+            zip_suffix: ios_arm64
+          - platform: tvOS
+            sdk: appletvos
+            destination: "generic/platform=tvOS"
+            product_dir: Release-appletvos
+            zip_suffix: tvos_arm64
+
+    steps:
+      - name: Checkout RetroArch (master)
+        uses: actions/checkout@v4
+        with:
+          repository: libretro/RetroArch
+          ref: master
+          path: RetroArch
+
+      - name: Checkout Dolphin core
+        uses: actions/checkout@v4
+        with:
+          path: dolphin_libretro
+
+      - name: Init Dolphin submodules
+        run: |
+          cd dolphin_libretro
+          git submodule update --init --recursive
+
+      - name: Install xcpretty
+        run: sudo gem install xcpretty
+
+      - name: Ensure SDKs are installed
+        run: |
+          if [ "${{ matrix.platform }}" = "iOS" ]; then
+            sudo xcodebuild -downloadPlatform iOS
+          elif [ "${{ matrix.platform }}" = "tvOS" ]; then
+            sudo xcodebuild -downloadPlatform tvOS
+          fi
+
+      - name: Bundle Dolphin into RetroArch
+        run: |
+          mkdir -p RetroArch/pkg/apple/cores/dolphin_libretro
+          rsync -a --exclude='.git' dolphin_libretro/ RetroArch/pkg/apple/cores/dolphin_libretro/
+
+      - name: Archive RetroArch with Dolphin
+        run: |
+          cd RetroArch
+          set -o pipefail
+          xcodebuild archive \
+            -workspace pkg/apple/RetroArch.xcworkspace \
+            -scheme RetroArch \
+            -configuration Release \
+            -sdk ${{ matrix.sdk }} \
+            -destination '${{ matrix.destination }}' \
+            -xcconfig pkg/apple/GitHubCI.xcconfig \
+            -archivePath build/RetroArch.xcarchive \
+            CODE_SIGNING_ALLOWED=NO | xcpretty --color
+
+      - name: Package .ipa (unsigned)
+        run: |
+          cd RetroArch/build/Build/Products/${{ matrix.product_dir }}
+          mkdir -p Payload
+          cp -r RetroArch.app Payload/
+          zip -r RetroArch_${{ matrix.zip_suffix }}.ipa Payload
+          mkdir -p $GITHUB_WORKSPACE/artifacts
+          mv RetroArch_${{ matrix.zip_suffix }}.ipa $GITHUB_WORKSPACE/artifacts/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroArch_${{ matrix.zip_suffix }}.ipa
+          path: artifacts/RetroArch_${{ matrix.zip_suffix }}.ipa
