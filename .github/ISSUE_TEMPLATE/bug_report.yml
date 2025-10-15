@@ -1,0 +1,89 @@
+name: "Bug report"
+description: Report a problem with the libretro port of Dolphin
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Title
+      description: Short summary of the issue
+    validations:
+      required: true
+
+  - type: input
+    id: dolphin_version
+    attributes:
+      label: Dolphin version
+      description: The exact Dolphin core version you are using
+    validations:
+      required: true
+
+  - type: input
+    id: retroarch_version
+    attributes:
+      label: RetroArch version
+      description: The exact RetroArch version you are using
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which platform are you running on?
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Android
+        - iOS
+        - tvOS
+        - webOS
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: renderer
+    attributes:
+      label: Renderer
+      description: Which graphics backend are you using?
+      options:
+        - Vulkan
+        - OpenGL/OpenGLES
+        - D3D11
+        - Other
+
+  - type: input
+    id: game
+    attributes:
+      label: Game exhibiting the issue
+      description: Name of the game where the issue occurs
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: Provide a clear and detailed description of the problem
+    validations:
+      required: true
+
+  - type: textarea
+    id: log_output
+    attributes:
+      label: Log Output
+      description: |
+        Paste relevant log output here (use code blocks if possible).
+
+        Use [Pastebin](https://pastebin.com/) / [Gist](https://gist.github.com/) for larger logs.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        **Note:** Please first check that the standalone Dolphin emulator does not have this issue.  
+        If the issue also occurs in standalone Dolphin, please report it at [Dolphin's bug tracker](https://bugs.dolphin-emu.org/projects/emulator/issues) instead.
