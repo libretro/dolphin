@@ -237,7 +237,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "1", "English" }, // DiscIO::Language::English
       { "0", "Japanese" }, // DiscIO::Language::Japanese
       { "2", "German" }, // DiscIO::Language::German
-      { "3" "French" }, // DiscIO::Language::French
+      { "3", "French" }, // DiscIO::Language::French
       { "4", "Spanish" }, // DiscIO::Language::Spanish
       { "5", "Italian" }, // DiscIO::Language::Italian
       { "6", "Dutch" }, // DiscIO::Language::Dutch

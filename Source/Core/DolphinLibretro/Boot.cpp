@@ -138,8 +138,9 @@ bool retro_load_game(const struct retro_game_info* game)
   Config::SetCurrent(Config::MAIN_ENABLE_CHEATS,
                      Libretro::GetOption<bool>(core::CHEATS_ENABLED, /*def=*/false));
 
-  Config::SetCurrent(Config::MAIN_GC_LANGUAGE,
-                     Libretro::GetOption<int>(core::LANGUAGE, static_cast<int>(DiscIO::Language::English)));
+  const int language = Libretro::GetOption<int>(core::LANGUAGE, static_cast<int>(DiscIO::Language::English));
+  Config::SetCurrent(Config::SYSCONF_LANGUAGE, language);
+  Config::SetCurrent(Config::MAIN_GC_LANGUAGE, DiscIO::ToGameCubeLanguage(static_cast<DiscIO::Language>(language)));
 
   Config::SetCurrent(Config::MAIN_DPL2_DECODER, false);
   Config::SetCurrent(Config::MAIN_AUDIO_LATENCY, 0);
