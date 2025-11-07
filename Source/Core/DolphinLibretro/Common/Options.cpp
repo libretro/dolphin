@@ -94,8 +94,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   // ========== Main.Core ==========
   {
     Libretro::Options::core::CPU_CORE,
+    "Core > CPU Core",
     "CPU Core",
-    nullptr,
     "Select CPU emulation method - JIT provides best performance.",
     nullptr,
     CATEGORY_CORE,
@@ -109,8 +109,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::CPU_CLOCK_RATE,
+    "Core > CPU Clock Rate",
     "CPU Clock Rate",
-    nullptr,
     "Adjust emulated CPU speed.",
     nullptr,
     CATEGORY_CORE,
@@ -125,8 +125,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::EMULATION_SPEED,
+    "Core > Emulation Speed",
     "Emulation Speed",
-    nullptr,
     "Set speed limit for emulation.",
     nullptr,
     CATEGORY_CORE,
@@ -139,8 +139,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   /*{
     Libretro::Options::core::MAIN_CPU_THREAD,
+    "Core > Dual Core Mode",
     "Dual Core Mode",
-    nullptr,
     "Enable dual-core CPU emulation.",
     nullptr,
     CATEGORY_CORE,
@@ -153,8 +153,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },*/
   {
     Libretro::Options::core::MAIN_PRECISION_FRAME_TIMING,
+    "Core > Precision Frame Timing",
     "Precision Frame Timing",
-    nullptr,
     "Use busy-wait for more accurate frame timing.",
     nullptr,
     CATEGORY_CORE,
@@ -171,8 +171,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::FASTMEM,
+    "Core > Fastmem",
     "Fastmem",
-    nullptr,
     "Enable fastmem optimization - which uses memory mapping for faster access.",
     nullptr,
     CATEGORY_CORE,
@@ -185,8 +185,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::FASTMEM_ARENA,
+    "Core > Fastmem Arena",
     "Fastmem Arena",
-    nullptr,
     "Enable fastmem arena - reserves 12 GiB of virtual memory for super fast access.",
     nullptr,
     CATEGORY_CORE,
@@ -198,23 +198,9 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "enabled"
   },
   {
-    Libretro::Options::audio::DSP_HLE,
-    "DSP HLE",
-    nullptr,
-    "Choose DSP method - HLE is faster, LLE is more accurate.",
-    nullptr,
-    CATEGORY_AUDIO,
-    {
-      { "enabled",  "HLE (Fast)" },
-      { "disabled", "LLE (Accurate)" },
-      { nullptr, nullptr }
-    },
-    "enabled"
-  },
-  {
     Libretro::Options::core::CHEATS_ENABLED,
+    "Core > Internal Cheats",
     "Internal Cheats",
-    nullptr,
     "Enable built-in cheat codes.",
     nullptr,
     CATEGORY_CORE,
@@ -227,8 +213,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::LANGUAGE,
+    "Core > System Language",
     "System Language",
-    nullptr,
     "Set system language.",
     nullptr,
     CATEGORY_CORE,
@@ -249,8 +235,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::FAST_DISC_SPEED,
+    "Core > Speed Up Disc Transfer",
     "Speed Up Disc Transfer",
-    nullptr,
     "Reduce loading times.",
     nullptr,
     CATEGORY_CORE,
@@ -263,8 +249,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::MAIN_MMU,
+    "Core > Enable MMU",
     "Enable MMU",
-    nullptr,
     "Enable emulation of the Memory Management Unit.",
     nullptr,
     CATEGORY_CORE,
@@ -275,54 +261,12 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
-  {
-    Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING,
-    "Wiimote Continuous Scanning",
-    nullptr,
-    "Continuously scan for Wiimotes.",
-    nullptr,
-    CATEGORY_CORE,
-    {
-      { "disabled", nullptr },
-      { "enabled",  nullptr },
-      { nullptr, nullptr }
-    },
-    "disabled"
-  },
-  {
-    Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII,
-    "Alt GC Ports (Wii)",
-    nullptr,
-    "Use ports 5-8 for GameCube controllers in Wii mode.",
-    nullptr,
-    CATEGORY_CORE,
-    {
-      { "disabled", nullptr },
-      { "enabled",  nullptr },
-      { nullptr, nullptr }
-    },
-    "disabled"
-  },
-  {
-    Libretro::Options::audio::MIXER_RATE,
-    "Audio Mixer Rate",
-    nullptr,
-    "Audio sample rate.",
-    nullptr,
-    CATEGORY_AUDIO,
-    {
-      { "32000", "32000 Hz" },
-      { "48000", "48000 Hz" },
-      { nullptr, nullptr }
-    },
-    "32000"
-  },
 
   // ========== Main.Interface ==========
   {
     Libretro::Options::main_interface::OSD_ENABLED,
+    "Interface > On-Screen Display",
     "On-Screen Display",
-    nullptr,
     "Show OSD messages.",
     nullptr,
     CATEGORY_INTERFACE,
@@ -334,9 +278,28 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "enabled"
   },
   {
-    Libretro::Options::main_interface::ENABLE_DEBUGGING,
-    "Enable debugging",
+    Libretro::Options::main_interface::LOG_LEVEL,
+    "Interface > Log Level",
+    "Log Level",
+    "Set log verbosity.",
     nullptr,
+    CATEGORY_INTERFACE,
+    {
+      { "1", "Notice" },  // VERY important information that is NOT errors. Like startup and OSReports.
+      { "2", "Error" },   // Critical errors
+      { "3", "Warning" }, // Something is suspicious.
+      { "4", "Info" },    // General information
+#if defined(_DEBUG) || defined(DEBUGFAST)
+      { "5", "Debug" },   // Detailed debugging - might make things slow
+#endif
+      { nullptr,   nullptr }
+    },
+    "Info"
+  },
+  {
+    Libretro::Options::main_interface::ENABLE_DEBUGGING,
+    "Interface > Enable debugging",
+    "Enable debugging",
     "Enable the debugger.",
     nullptr,
     CATEGORY_INTERFACE,
@@ -350,9 +313,23 @@ static struct retro_core_option_v2_definition option_defs[] = {
 
   // ========== Main.DSP ==========
   {
-    Libretro::Options::audio::DSP_JIT,
-    "DSP JIT",
+    Libretro::Options::audio::DSP_HLE,
+    "Audio / DSP > DSP HLE",
+    "DSP HLE",
+    "Choose DSP method - HLE is faster, LLE is more accurate.",
     nullptr,
+    CATEGORY_AUDIO,
+    {
+      { "enabled",  "HLE (Fast)" },
+      { "disabled", "LLE (Accurate)" },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::audio::DSP_JIT,
+    "Audio / DSP > DSP JIT",
+    "DSP JIT",
     "Enable JIT for DSP LLE.",
     nullptr,
     CATEGORY_AUDIO,
@@ -363,12 +340,40 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "enabled"
   },
+  {
+    Libretro::Options::audio::MIXER_RATE,
+    "Audio / DSP > Audio Mixer Rate",
+    "Audio Mixer Rate",
+    "Audio sample rate.",
+    nullptr,
+    CATEGORY_AUDIO,
+    {
+      { "32000", "32000 Hz" },
+      { "48000", "48000 Hz" },
+      { nullptr, nullptr }
+    },
+    "32000"
+  },
+  {
+    Libretro::Options::audio::CALL_BACK_AUDIO,
+    "Audio / DSP > Async Audio Callback",
+    "Async Audio Callback",
+    "Use asynchronous audio callbacks.",
+    "Pushes audio asynchronously instead of synchronously.",
+    CATEGORY_AUDIO,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
   // ========== SYSCONF.IPL ==========
   {
     Libretro::Options::sysconf::WIDESCREEN,
+    "System Configuration > Widescreen (Wii)",
     "Widescreen (Wii)",
-    nullptr,
     "Enable widescreen for Wii.",
     nullptr,
     CATEGORY_SYSCONF,
@@ -381,8 +386,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::sysconf::PROGRESSIVE_SCAN,
+    "System Configuration > Progressive Scan",
     "Progressive Scan",
-    nullptr,
     "Enable progressive scan.",
     nullptr,
     CATEGORY_SYSCONF,
@@ -395,8 +400,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::sysconf::PAL60,
+    "System Configuration > PAL60 Mode",
     "PAL60 Mode",
-    nullptr,
     "Enable 60Hz for PAL games.",
     nullptr,
     CATEGORY_SYSCONF,
@@ -411,8 +416,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   // ========== SYSCONF.BT ==========
   {
     Libretro::Options::sysconf::SENSOR_BAR_POSITION,
+    "System Configuration > Sensor Bar Position",
     "Sensor Bar Position",
-    nullptr,
     "Set Wiimote sensor bar position.",
     nullptr,
     CATEGORY_SYSCONF,
@@ -425,8 +430,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::sysconf::ENABLE_RUMBLE,
+    "System Configuration > Controller Rumble",
     "Controller Rumble",
-    nullptr,
     "Enable rumble feedback.",
     nullptr,
     CATEGORY_SYSCONF,
@@ -437,12 +442,40 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "enabled"
   },
+  {
+    Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING,
+    "System Configuration > Wiimote Continuous Scanning",
+    "Wiimote Continuous Scanning",
+    "Continuously scan for Wiimotes.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII,
+    "System Configuration > Alt GC Ports (Wii)",
+    "Alt GC Ports (Wii)",
+    "Use ports 5-8 for GameCube controllers in Wii mode.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
   // ========== Graphics.Hardware ==========
   /*{
     Libretro::Options::gfx_hardware::VSYNC,
+    "Graphics > Hardware > VSync",
     "VSync",
-    nullptr,
     "Sync with display refresh.",
     nullptr,
     CATEGORY_GFX_HARDWARE,
@@ -457,8 +490,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   // ========== Graphics.Settings ==========
   {
     Libretro::Options::gfx_settings::RENDERER,
+    "Graphics > Settings > Graphics Backend",
     "Graphics Backend",
-    nullptr,
     "Select rendering backend.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -474,8 +507,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::WIDESCREEN_HACK,
+    "Graphics > Settings > Widescreen Hack",
     "Widescreen Hack",
-    nullptr,
     "Force 16:9 rendering.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -488,8 +521,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::EFB_SCALE,
+    "Graphics > Settings > Internal Resolution",
     "Internal Resolution",
-    nullptr,
     "Multiply native resolution.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -506,8 +539,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::SHADER_COMPILATION_MODE,
+    "Graphics > Settings > Shader Compilation",
     "Shader Compilation",
-    nullptr,
     "Control shader compilation.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -522,8 +555,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::WAIT_FOR_SHADERS,
+    "Graphics > Settings > Wait for Shaders",
     "Wait for Shaders",
-    nullptr,
     "Precompile shaders before starting.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -536,8 +569,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::ANTI_ALIASING,
+    "Graphics > Settings > Anti-Aliasing",
     "Anti-Aliasing",
-    nullptr,
     "Reduce jagged edges.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -555,8 +588,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::TEXTURE_CACHE_ACCURACY,
+    "Graphics > Settings > Texture Cache Accuracy",
     "Texture Cache Accuracy",
-    nullptr,
     "Texture cache safety level.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -569,37 +602,9 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "128"
   },
   {
-    Libretro::Options::gfx_enhancements::LOAD_CUSTOM_TEXTURES,
-    "Load Custom Textures",
-    nullptr,
-    "Load high-res texture packs.",
-    nullptr,
-    CATEGORY_GFX_SETTINGS,
-    {
-      { "disabled", nullptr },
-      { "enabled",  nullptr },
-      { nullptr, nullptr }
-    },
-    "disabled"
-  },
-  {
-    Libretro::Options::gfx_enhancements::CACHE_CUSTOM_TEXTURES,
-    "Prefetch Custom Textures",
-    nullptr,
-    "Preload custom textures.",
-    nullptr,
-    CATEGORY_GFX_SETTINGS,
-    {
-      { "disabled", nullptr },
-      { "enabled",  nullptr },
-      { nullptr, nullptr }
-    },
-    "disabled"
-  },
-  {
     Libretro::Options::gfx_settings::GPU_TEXTURE_DECODING,
+    "Graphics > Settings > GPU Texture Decoding",
     "GPU Texture Decoding",
-    nullptr,
     "Decode textures on GPU.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -612,8 +617,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::ENABLE_PIXEL_LIGHTING,
+    "Graphics > Settings > Pixel Lighting",
     "Pixel Lighting",
-    nullptr,
     "Enable per-pixel lighting calculations instead of per-vertex.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -626,8 +631,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::FAST_DEPTH_CALCULATION,
+    "Graphics > Settings > Fast Depth Calculation",
     "Fast Depth Calculation",
-    nullptr,
     "Use faster depth calculation.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -640,8 +645,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_settings::DISABLE_FOG,
+    "Graphics > Settings > Disable Fog",
     "Disable Fog",
-    nullptr,
     "Disable fog rendering effects. May improve performance but reduces visual accuracy.",
     nullptr,
     CATEGORY_GFX_SETTINGS,
@@ -656,8 +661,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   // ========== Graphics.Enhancements ==========
   {
     Libretro::Options::gfx_enhancements::FORCE_TEXTURE_FILTERING_MODE,
+    "Graphics > Enhancements > Texture Filtering",
     "Texture Filtering",
-    nullptr,
     "Override texture filtering.",
     nullptr,
     CATEGORY_GFX_ENHANCEMENTS,
@@ -671,8 +676,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_enhancements::MAX_ANISOTROPY,
+    "Graphics > Enhancements > Anisotropic Filtering",
     "Anisotropic Filtering",
-    nullptr,
     "Improve texture quality at angles.",
     nullptr,
     CATEGORY_GFX_ENHANCEMENTS,
@@ -687,9 +692,37 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "0"
   },
   {
-    Libretro::Options::gfx_enhancements::GFX_ENHANCE_OUTPUT_RESAMPLING,
-    "Output Resampling",
+    Libretro::Options::gfx_enhancements::LOAD_CUSTOM_TEXTURES,
+    "Graphics > Enhancements > Load Custom Textures",
+    "Load Custom Textures",
+    "Load high-res texture packs.",
     nullptr,
+    CATEGORY_GFX_ENHANCEMENTS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_enhancements::CACHE_CUSTOM_TEXTURES,
+    "Graphics > Enhancements > Prefetch Custom Textures",
+    "Prefetch Custom Textures",
+    "Preload custom textures.",
+    nullptr,
+    CATEGORY_GFX_ENHANCEMENTS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_enhancements::GFX_ENHANCE_OUTPUT_RESAMPLING,
+    "Graphics > Enhancements > Output Resampling",
+    "Output Resampling",
     "Select the resampling filter used when scaling the final image.",
     nullptr,
     CATEGORY_GFX_ENHANCEMENTS,
@@ -707,11 +740,11 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_enhancements::FORCE_TRUE_COLOR,
+    "Graphics > Enhancements > Force True Color",
     "Force True Color",
-    nullptr,
     "Disable dithering and force 24-bit color output instead of 18-bit.",
     nullptr,
-    CATEGORY_GFX_SETTINGS,
+    CATEGORY_GFX_ENHANCEMENTS,
     {
       { "disabled", nullptr },
       { "enabled",  nullptr },
@@ -721,11 +754,11 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_enhancements::GFX_ENHANCE_DISABLE_COPY_FILTER,
+    "Graphics > Enhancements > Disable Copy Filter",
     "Disable Copy Filter",
-    nullptr,
     "Disable the GameCube/Wii copy filter. Removes blur from some games but may reduce accuracy.",
     nullptr,
-    CATEGORY_GFX_SETTINGS,
+    CATEGORY_GFX_ENHANCEMENTS,
     {
       { "disabled", nullptr },
       { "enabled",  nullptr },
@@ -735,8 +768,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_enhancements::GFX_ENHANCE_HDR_OUTPUT,
+    "Graphics > Enhancements > HDR Output",
     "HDR Output",
-    nullptr,
     "Enable High Dynamic Range output when supported by the graphics backend and display.",
     nullptr,
     CATEGORY_GFX_ENHANCEMENTS,
@@ -749,11 +782,11 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_enhancements::GFX_ARBITRARY_MIPMAP_DETECTION,
+    "Graphics > Enhancements > Arbitrary Mipmap Detection",
     "Arbitrary Mipmap Detection",
-    nullptr,
     "Enable detection of arbitrary mipmaps. Improves accuracy in some games but may reduce performance.",
     nullptr,
-    CATEGORY_GFX_SETTINGS,
+    CATEGORY_GFX_ENHANCEMENTS,
     {
       { "disabled", nullptr },
       { "enabled",  nullptr },
@@ -765,8 +798,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   // ========== Graphics.Hacks ==========
   {
     Libretro::Options::gfx_hacks::EFB_ACCESS_ENABLE,
+    "Graphics > Hacks > EFB Access from CPU",
     "EFB Access from CPU",
-    nullptr,
     "Allow CPU EFB access. Required for some games but slow.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -779,8 +812,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::EFB_ACCESS_DEFER_INVALIDATION,
+    "Graphics > Hacks > EFB Access Defer Invalidation",
     "EFB Access Defer Invalidation",
-    nullptr,
     "Defer EFB cache invalidation.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -793,8 +826,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::EFB_ACCESS_TILE_SIZE,
+    "Graphics > Hacks > EFB Access Tile Size",
     "EFB Access Tile Size",
-    nullptr,
     "EFB access granularity.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -811,8 +844,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::BBOX_ENABLED,
+    "Graphics > Hacks > Bounding Box",
     "Bounding Box",
-    nullptr,
     "Emulate bounding box hardware. Required for Paper Mario TTYD.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -825,8 +858,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::FORCE_PROGRESSIVE,
+    "Graphics > Hacks > Force Progressive",
     "Force Progressive",
-    nullptr,
     "Force progressive scan.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -839,8 +872,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::EFB_TO_TEXTURE,
+    "Graphics > Hacks > Skip EFB Copy to RAM",
     "Skip EFB Copy to RAM",
-    nullptr,
     "Store EFB in texture memory.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -853,8 +886,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::XFB_TO_TEXTURE_ENABLE,
+    "Graphics > Hacks > Skip XFB Copy to RAM",
     "Skip XFB Copy to RAM",
-    nullptr,
     "Store XFB in texture memory.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -867,8 +900,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::EFB_TO_VRAM,
+    "Graphics > Hacks > Disable EFB to VRAM",
     "Disable EFB to VRAM",
-    nullptr,
     "Disable EFB VRAM copies.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -881,8 +914,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::DEFER_EFB_COPIES,
+    "Graphics > Hacks > Defer EFB Copies",
     "Defer EFB Copies",
-    nullptr,
     "Defer EFB copies until needed.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -895,8 +928,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::IMMEDIATE_XFB,
+    "Graphics > Hacks > Immediate XFB",
     "Immediate XFB",
-    nullptr,
     "Display XFB immediately.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -909,8 +942,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::SKIP_DUPE_FRAMES,
+    "Graphics > Hacks > Skip Duplicate Frames",
     "Skip Duplicate Frames",
-    nullptr,
     "Don't present duplicate frames.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -923,8 +956,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::EARLY_XFB_OUTPUT,
+    "Graphics > Hacks > Early XFB Output",
     "Early XFB Output",
-    nullptr,
     "Output XFB early.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -937,8 +970,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::EFB_SCALED_COPY,
+    "Graphics > Hacks > EFB Scaled Copy",
     "EFB Scaled Copy",
-    nullptr,
     "Scale EFB copy by IR.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -951,8 +984,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::EFB_EMULATE_FORMAT_CHANGES,
+    "Graphics > Hacks > EFB Emulate Format Changes",
     "EFB Emulate Format Changes",
-    nullptr,
     "Emulate EFB format changes (needed for some effects).",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -965,8 +998,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::VERTEX_ROUNDING,
+    "Graphics > Hacks > Vertex Rounding",
     "Vertex Rounding",
-    nullptr,
     "Round vertex positions to avoid gaps.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -979,8 +1012,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::VI_SKIP,
+    "Graphics > Hacks > VI Skip",
     "VI Skip",
-    nullptr,
     "Skip VI updates to improve performance.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -993,8 +1026,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::gfx_hacks::FAST_TEXTURE_SAMPLING,
+    "Graphics > Hacks > Fast Texture Sampling",
     "Fast Texture Sampling",
-    nullptr,
     "Use faster but less accurate texture sampling.",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -1008,8 +1041,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   #ifdef __APPLE__
   {
     Libretro::Options::gfx_hacks::NO_MIPMAPPING,
+    "Graphics > Hacks > Disable Mipmapping",
     "Disable Mipmapping",
-    nullptr,
     "Disable mipmapping (workaround for macOS drivers).",
     nullptr,
     CATEGORY_GFX_HACKS,
@@ -1025,8 +1058,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   // ========== Wiimote IR ==========
   {
     Libretro::Options::wiimote::IR_MODE,
+    "Wiimote IR > Wiimote IR Mode",
     "Wiimote IR Mode",
-    nullptr,
     "Control method for Wiimote pointer.",
     nullptr,
     CATEGORY_WIIMOTE,
@@ -1040,8 +1073,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::wiimote::IR_OFFSET,
+    "Wiimote IR > Wiimote IR Vertical Offset",
     "Wiimote IR Vertical Offset",
-    nullptr,
     "Adjust vertical center of Wiimote pointer.",
     nullptr,
     CATEGORY_WIIMOTE,
@@ -1078,8 +1111,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::wiimote::IR_YAW,
+    "Wiimote IR > Wiimote IR Total Yaw",
     "Wiimote IR Total Yaw",
-    nullptr,
     "Horizontal field of view for Wiimote pointer.",
     nullptr,
     CATEGORY_WIIMOTE,
@@ -1111,8 +1144,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::wiimote::IR_PITCH,
+    "Wiimote IR > Wiimote IR Total Pitch",
     "Wiimote IR Total Pitch",
-    nullptr,
     "Vertical field of view for Wiimote pointer.",
     nullptr,
     CATEGORY_WIIMOTE,
@@ -1144,40 +1177,6 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "15"
   },
 
-  // ========== Other ==========
-  {
-    Libretro::Options::main_interface::LOG_LEVEL,
-    "Log Level",
-    nullptr,
-    "Set log verbosity.",
-    nullptr,
-    CATEGORY_INTERFACE,
-    {
-      { "1", "Notice" },  // VERY important information that is NOT errors. Like startup and OSReports.
-      { "2", "Error" },   // Critical errors
-      { "3", "Warning" }, // Something is suspicious.
-      { "4", "Info" },    // General information
-#if defined(_DEBUG) || defined(DEBUGFAST)
-      { "5", "Debug" },   // Detailed debugging - might make things slow
-#endif
-      { nullptr,   nullptr }
-    },
-    "Info"
-  },
-  {
-    Libretro::Options::audio::CALL_BACK_AUDIO,
-    "Async Audio Callback",
-    nullptr,
-    "Use asynchronous audio callbacks.",
-    "Pushes audio asynchronously instead of synchronously.",
-    CATEGORY_AUDIO,
-    {
-      { "disabled", nullptr },
-      { "enabled",  nullptr },
-      { nullptr, nullptr }
-    },
-    "disabled"
-  },
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }
 };
 
