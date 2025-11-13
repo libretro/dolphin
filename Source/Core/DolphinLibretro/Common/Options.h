@@ -123,6 +123,7 @@ namespace core {
   constexpr const char FASTMEM[] = "dolphin_fastmem";
   constexpr const char FASTMEM_ARENA[] = "dolphin_fastmem_arena";
   constexpr const char CHEATS_ENABLED[] = "dolphin_cheats_enabled";
+  constexpr const char SKIP_GC_BIOS[] = "dolphin_skip_gc_bios";
   constexpr const char LANGUAGE[] = "dolphin_language";
   constexpr const char FAST_DISC_SPEED[] = "dolphin_fast_disc_speed";
   constexpr const char MAIN_MMU[] = "dolphin_main_mmu";

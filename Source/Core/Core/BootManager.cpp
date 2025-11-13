@@ -23,6 +23,9 @@
 
 #include <fmt/format.h>
 
+#ifdef __LIBRETRO__
+#include "Common/CommonPaths.h"
+#endif
 #include "Common/CommonTypes.h"
 #include "Common/Config/Config.h"
 #include "Common/FileUtil.h"
@@ -167,6 +170,48 @@ bool BootCore(Core::System& system, std::unique_ptr<BootParameters> boot,
   }
 
   AchievementManager::GetInstance().CloseGame();
+
+#ifdef __LIBRETRO__
+  // For Libretro we check for the IPL file here, the disc region is known by now
+  // so we can easily get the correct path to check.
+  if (!system.IsWii() && !Config::Get(Config::MAIN_SKIP_IPL))
+  {
+    std::string ipl_path;
+    switch (StartUp.m_region)
+    {
+      case DiscIO::Region::NTSC_J:
+        ipl_path = JAP_DIR DIR_SEP GC_IPL;
+        break;
+      case DiscIO::Region::NTSC_U:
+        ipl_path = USA_DIR DIR_SEP GC_IPL;
+        break;
+      case DiscIO::Region::PAL:
+        ipl_path = EUR_DIR DIR_SEP GC_IPL;
+        break;
+      default:
+        break;
+    }
+
+    bool skip_ipl = ipl_path.empty();
+    if (!skip_ipl)
+    {
+      // Check for "<system_dir>/dolphin-emu/Sys/GC/<region>/IPL.bin"
+      // and "<save_dir>/User/GC/<region>/IPL.bin" respectively
+      skip_ipl = !(File::Exists(File::GetSysDirectory() + GC_SYS_DIR DIR_SEP + ipl_path) ||
+                   File::Exists(File::GetUserPath(D_GCUSER_IDX) + ipl_path));
+    }
+
+    // If the file is missing or if the returned region is unknown we set Config::MAIN_SKIP_IPL
+    // to true before the Core::Init() call below or it will just hang forever.
+    // It also allows the user to just leave the "Skip BIOS" core options disabled, no matter
+    // if they have the IPL for the current game region.
+    if (skip_ipl)
+    {
+      WARN_LOG_FMT(BOOT, "Skipping IPL: {}.", ipl_path.empty() ? "region unknown" : "file not found");
+      Config::SetCurrent(Config::MAIN_SKIP_IPL, true);
+    }
+  }
+#endif
 
   const bool load_ipl = !system.IsWii() && !Config::Get(Config::MAIN_SKIP_IPL) &&
                         std::holds_alternative<BootParameters::Disc>(boot->parameters);

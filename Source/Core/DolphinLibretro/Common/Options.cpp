@@ -227,6 +227,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "disabled"
   },
   {
+    Libretro::Options::core::SKIP_GC_BIOS,
+    "Skip GameCube BIOS",
+    nullptr,
+    "Skip the GameCube BIOS animation/menu and start the game directly.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
     Libretro::Options::core::LANGUAGE,
     "System Language",
     nullptr,
