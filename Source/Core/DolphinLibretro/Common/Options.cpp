@@ -227,8 +227,8 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   {
     Libretro::Options::core::SKIP_GC_BIOS,
+    "Core > Skip GameCube BIOS",
     "Skip GameCube BIOS",
-    nullptr,
     "Skip the GameCube BIOS animation/menu and start the game directly.",
     nullptr,
     CATEGORY_CORE,
@@ -331,22 +331,6 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "Enable the debugger.",
     nullptr,
     CATEGORY_INTERFACE,
-    {
-      { "disabled", nullptr },
-      { "enabled",  nullptr },
-      { nullptr, nullptr }
-    },
-    "disabled"
-  },
-
-  // Main.BluetoothPassthrough
-  {
-    Libretro::Options::main_bluetooth::BLUETOOTH_PASSTHROUGH,
-    "Bluetooth passthrough mode",
-    nullptr,
-    "Pass all traffic directly to the host’s Bluetooth adapter. This might CRASH if your adaptor is not compatible.",
-    nullptr,
-    CATEGORY_SYSCONF,
     {
       { "disabled", nullptr },
       { "enabled",  nullptr },
@@ -505,6 +489,22 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "System Configuration > Alt GC Ports (Wii)",
     "Alt GC Ports (Wii)",
     "Use ports 5-8 for GameCube controllers in Wii mode.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+
+  // Main.BluetoothPassthrough
+  {
+    Libretro::Options::main_bluetooth::BLUETOOTH_PASSTHROUGH,
+    "System Configuration > Bluetooth passthrough mode",
+    "Bluetooth passthrough mode",
+    "Pass all traffic directly to the host's Bluetooth adapter. This might CRASH if your adaptor is not compatible.",
     nullptr,
     CATEGORY_SYSCONF,
     {

@@ -887,7 +887,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
       wmButtons->SetControlExpression(4, "L");                             // -
       wmButtons->SetControlExpression(5, "R");                             // +
 
-      if (irMode != 1 && irMode != 2)
+      if (irMode != 0 && irMode != 1)
       {
         wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y1-`");  // Forward
         wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y1+`");  // Backward
@@ -925,7 +925,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     wmDPad->SetControlExpression(2, "Left");   // Left
     wmDPad->SetControlExpression(3, "Right");  // Right
 
-    if (irMode == 1 || irMode == 2)
+    if (irMode == 0 || irMode == 1)
     {
       // Set right stick to control the IR
       wmIR->SetControlExpression(0, "`" + devAnalog + ":Y1-`");     // Up
@@ -933,7 +933,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
       wmIR->SetControlExpression(2, "`" + devAnalog + ":X1-`");     // Left
       wmIR->SetControlExpression(3, "`" + devAnalog + ":X1+`");     // Right
       static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[4].get())
-        ->SetValue(irMode == 1);                 // Relative input
+        ->SetValue(irMode == 0);                                    // Relative input
       static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[5].get())
         ->SetValue(true);                                           // Auto hide
     }
