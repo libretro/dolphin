@@ -111,84 +111,84 @@ bool retro_load_game(const struct retro_game_info* game)
   Libretro::Options::Init();
 
   // Main.Core
-  Config::SetCurrent(Config::MAIN_CPU_CORE,
+  Config::SetBase(Config::MAIN_CPU_CORE,
     static_cast<PowerPC::CPUCore>(
         Libretro::GetOption<int>(
             core::CPU_CORE,
             static_cast<int>(PowerPC::DefaultCPUCore()))));
 
 #if defined(_DEBUG)
-  Config::SetCurrent(Config::MAIN_FASTMEM, false);
-  Config::SetCurrent(Config::MAIN_FASTMEM_ARENA, false);
+  Config::SetBase(Config::MAIN_FASTMEM, false);
+  Config::SetBase(Config::MAIN_FASTMEM_ARENA, false);
 #else
-  Config::SetCurrent(Config::MAIN_FASTMEM,
+  Config::SetBase(Config::MAIN_FASTMEM,
                      Libretro::GetOption<bool>(core::FASTMEM, /*def=*/true));
-  Config::SetCurrent(Config::MAIN_FASTMEM_ARENA,
+  Config::SetBase(Config::MAIN_FASTMEM_ARENA,
                      Libretro::GetOption<bool>(core::FASTMEM_ARENA, /*def=*/true));
 #endif
-  Config::SetCurrent(Config::MAIN_ACCURATE_CPU_CACHE,
+  Config::SetBase(Config::MAIN_ACCURATE_CPU_CACHE,
     Libretro::GetOption<bool>(core::MAIN_ACCURATE_CPU_CACHE, /*def=*/false));
 
-  Config::SetCurrent(Config::MAIN_DSP_HLE,
+  Config::SetBase(Config::MAIN_DSP_HLE,
                      Libretro::GetOption<bool>(audio::DSP_HLE, /*def=*/true));
 
   // dual core (true) or single core (false)
-  Config::SetCurrent(Config::MAIN_CPU_THREAD,
+  Config::SetBase(Config::MAIN_CPU_THREAD,
     Libretro::GetOption<bool>(core::MAIN_CPU_THREAD, /*def=*/true));
 
-  Config::SetCurrent(Config::MAIN_ENABLE_CHEATS,
+  Config::SetBase(Config::MAIN_ENABLE_CHEATS,
                      Libretro::GetOption<bool>(core::CHEATS_ENABLED, /*def=*/false));
 
-  Config::SetCurrent(Config::MAIN_SKIP_IPL, Libretro::GetOption<bool>(core::SKIP_GC_BIOS, /*def=*/true));
+  Config::SetBase(Config::MAIN_SKIP_IPL, Libretro::GetOption<bool>(core::SKIP_GC_BIOS, /*def=*/true));
 
   const int language = Libretro::GetOption<int>(core::LANGUAGE, static_cast<int>(DiscIO::Language::English));
-  Config::SetCurrent(Config::SYSCONF_LANGUAGE, language);
-  Config::SetCurrent(Config::MAIN_GC_LANGUAGE, DiscIO::ToGameCubeLanguage(static_cast<DiscIO::Language>(language)));
+  Config::SetBase(Config::SYSCONF_LANGUAGE, language);
+  Config::SetBase(Config::MAIN_GC_LANGUAGE, DiscIO::ToGameCubeLanguage(static_cast<DiscIO::Language>(language)));
 
-  Config::SetCurrent(Config::MAIN_DPL2_DECODER, false);
-  Config::SetCurrent(Config::MAIN_AUDIO_LATENCY, 0);
-  Config::SetCurrent(Config::MAIN_AUDIO_FILL_GAPS, false);
+  Config::SetBase(Config::MAIN_DPL2_DECODER, false);
+  Config::SetBase(Config::MAIN_AUDIO_LATENCY, 0);
+  Config::SetBase(Config::MAIN_AUDIO_FILL_GAPS, false);
 
-  Config::SetCurrent(Config::MAIN_EMULATION_SPEED,
+  Config::SetBase(Config::MAIN_EMULATION_SPEED,
                      Libretro::GetOption<double>(core::EMULATION_SPEED, /*def=*/0.0));
   {
     // Overclock (cpu clock rate) — option values in option_defs used strings like "100%" etc.
     double multiplier = Libretro::GetOption<double>(core::CPU_CLOCK_RATE, 1.0);
-    Config::SetCurrent(Config::MAIN_OVERCLOCK, multiplier);
-    Config::SetCurrent(Config::MAIN_OVERCLOCK_ENABLE, multiplier != 1.0);
+    Config::SetBase(Config::MAIN_OVERCLOCK, multiplier);
+    Config::SetBase(Config::MAIN_OVERCLOCK_ENABLE, multiplier != 1.0);
   }
 
-  Config::SetCurrent(Config::MAIN_PRECISION_FRAME_TIMING,
+  Config::SetBase(Config::MAIN_PRECISION_FRAME_TIMING,
     Libretro::GetOption<bool>(core::MAIN_PRECISION_FRAME_TIMING,
                             /*def=*/false)); // true is the standalone default
 
-  Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
+  Config::SetBase(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
                      Libretro::GetOption<bool>(sysconf::WIIMOTE_CONTINUOUS_SCANNING,
                                              /*def=*/false));
-  Config::SetCurrent(Config::MAIN_MMU,
+  Config::SetBase(Config::MAIN_MMU,
                      Libretro::GetOption<bool>(core::MAIN_MMU, /*def=*/false));
 
-  Config::SetCurrent(Config::MAIN_FAST_DISC_SPEED,
+  Config::SetBase(Config::MAIN_FAST_DISC_SPEED,
                      Libretro::GetOption<bool>(core::FAST_DISC_SPEED, /*def=*/false));
 
   // Main.Interface
-  Config::SetCurrent(Config::MAIN_OSD_MESSAGES,
+  Config::SetBase(Config::MAIN_OSD_MESSAGES,
                      Libretro::GetOption<bool>(main_interface::OSD_ENABLED, /*def=*/true));
-  Config::SetCurrent(Config::MAIN_ENABLE_DEBUGGING,
+  Config::SetBase(Config::MAIN_ENABLE_DEBUGGING,
                      Libretro::GetOption<bool>(main_interface::ENABLE_DEBUGGING, /*def=*/false));
 
   // Main.General
-  Config::SetCurrent(Config::MAIN_TIME_TRACKING, false);
+  Config::SetBase(Config::MAIN_TIME_TRACKING, false);
 
   // Main.DSP
-  Config::SetCurrent(Config::MAIN_DSP_JIT,
+  Config::SetBase(Config::MAIN_DSP_JIT,
                      Libretro::GetOption<bool>(audio::DSP_JIT, /*def=*/true));
-  Config::SetCurrent(Config::MAIN_DUMP_AUDIO, false);
+  Config::SetBase(Config::MAIN_DUMP_AUDIO, false);
 
-  Config::SetCurrent(Config::MAIN_AUDIO_BACKEND, BACKEND_LIBRETRO);
+  Config::SetBase(Config::MAIN_AUDIO_BACKEND, BACKEND_LIBRETRO);
 
   // Main.BluetoothPassthrough
-  Config::SetCurrent(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED,
+  Config::SetBase(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED,
     Libretro::GetOption<bool>(Libretro::Options::main_bluetooth::BLUETOOTH_PASSTHROUGH, /*def=*/false));
 
   // SYSCONF.IPL
@@ -354,10 +354,10 @@ bool retro_load_game(const struct retro_game_info* game)
     if (current == PowerPC::CPUCore::JIT64 ||
         current == PowerPC::CPUCore::JITARM64)
     {
-      Config::SetCurrent(Config::MAIN_CPU_CORE, PowerPC::CPUCore::CachedInterpreter);
+      Config::SetBase(Config::MAIN_CPU_CORE, PowerPC::CPUCore::CachedInterpreter);
     }
 
-    Config::SetCurrent(Config::GFX_VERTEX_LOADER_TYPE, VertexLoaderType::Software);
+    Config::SetBase(Config::GFX_VERTEX_LOADER_TYPE, VertexLoaderType::Software);
 
     OSD::AddMessage("CPU: Just in time compiler disabled as unavailable on your system", OSD::Duration::NORMAL);
   }
