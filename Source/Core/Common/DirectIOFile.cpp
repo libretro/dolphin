@@ -89,6 +89,13 @@ bool DirectIOFile::Open(const std::string& path, AccessMode access_mode, OpenMod
   // Allow deleting and renaming through our handle.
   desired_access |= DELETE;
 
+#ifdef __LIBRETRO__
+  // The DELETE flag prevents the Libretro implementation of RetroAchievements from
+  // opening the file so make sure only GENERIC_READ is set when we're in read mode.
+  if (access_mode == AccessMode::Read)
+    desired_access = GENERIC_READ;
+#endif
+
   // All sharing is allowed to more closely match default behavior on other OSes.
   constexpr DWORD share_mode = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
 
