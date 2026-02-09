@@ -34,6 +34,7 @@
 #include "InputCommon/GCAdapter.h"
 #include "InputCommon/GCPadStatus.h"
 #include "InputCommon/InputConfig.h"
+#include "Core/Config/WiimoteSettings.h"
 
 //#include "UICommon/UICommon.h"
 //#include "Core/HotkeyManager.h"
@@ -607,7 +608,10 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
   if (device == RETRO_DEVICE_NONE)
   {
     if (system.IsWii() && port < 4)
+    {
+      Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(port), WiimoteSource::None);
       WiimoteCommon::OnSourceChanged(port, WiimoteSource::None);
+    }
 
     if (!system.IsWii() || !altGCPorts)
     {
@@ -983,6 +987,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
   {
   case RETRO_DEVICE_WIIMOTE:
     wmExtension->SetSelectedAttachment(ExtensionNumber::NONE);
+    Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(port), WiimoteSource::Emulated);
     WiimoteCommon::OnSourceChanged(port, WiimoteSource::Emulated);
     break;
 
@@ -990,21 +995,25 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     wmExtension->SetSelectedAttachment(ExtensionNumber::NONE);
      static_cast<ControllerEmu::NumericSetting<bool>*>(wmOptions->numeric_settings[3].get())
         ->SetValue(true);  // Sideways Wiimote
+    Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(port), WiimoteSource::Emulated);
     WiimoteCommon::OnSourceChanged(port, WiimoteSource::Emulated);
     break;
 
   case RETRO_DEVICE_WIIMOTE_NC:
     wmExtension->SetSelectedAttachment(ExtensionNumber::NUNCHUK);
+    Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(port), WiimoteSource::Emulated);
     WiimoteCommon::OnSourceChanged(port, WiimoteSource::Emulated);
     break;
 
   case RETRO_DEVICE_WIIMOTE_CC:
   case RETRO_DEVICE_WIIMOTE_CC_PRO:
     wmExtension->SetSelectedAttachment(ExtensionNumber::CLASSIC);
+    Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(port), WiimoteSource::Emulated);
     WiimoteCommon::OnSourceChanged(port, WiimoteSource::Emulated);
     break;
 
   case RETRO_DEVICE_REAL_WIIMOTE:
+    Config::SetBaseOrCurrent(Config::GetInfoForWiimoteSource(port), WiimoteSource::Real);
     WiimoteCommon::OnSourceChanged(port, WiimoteSource::Real);
     break;
   }
