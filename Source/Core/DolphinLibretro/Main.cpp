@@ -36,7 +36,6 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/Widescreen.h"
 #include "Core/Boot/Boot.h"
-#include "Core/HW/CPU.h"
 
 #ifdef PERF_TEST
 static struct retro_perf_callback perf_cb;
@@ -244,6 +243,9 @@ void retro_run(void)
       Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING));
     WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
   }
+
+  if (Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
+    Libretro::Input::BluetoothPassthroughBind();
 
   RETRO_PERFORMANCE_INIT(dolphin_main_func);
   RETRO_PERFORMANCE_START(dolphin_main_func);

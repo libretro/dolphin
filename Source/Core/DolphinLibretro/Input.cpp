@@ -8,6 +8,7 @@
 #include "Common/IniFile.h"
 #include "Common/Logging/Log.h"
 #include "Core/Config/MainSettings.h"
+#include "Core/Config/WiimoteSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/FreeLookManager.h"
 #include "Core/HW/GBAPad.h"
@@ -21,8 +22,10 @@
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/HW/SI/SI.h"
 #include "Core/HW/SI/SI_Device.h"
+#include "Core/IOS/USB/Bluetooth/BTReal.h"
 #include "Core/Host.h"
 #include "Core/System.h"
+#include "Core/WiiUtils.h"
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "InputCommon/ControlReference/ControlReference.h"
@@ -34,10 +37,6 @@
 #include "InputCommon/GCAdapter.h"
 #include "InputCommon/GCPadStatus.h"
 #include "InputCommon/InputConfig.h"
-#include "Core/Config/WiimoteSettings.h"
-
-//#include "UICommon/UICommon.h"
-//#include "Core/HotkeyManager.h"
 
 #define RETRO_DEVICE_WIIMOTE RETRO_DEVICE_JOYPAD
 #define RETRO_DEVICE_WIIMOTE_SW ((2 << 8) | RETRO_DEVICE_JOYPAD)
@@ -579,6 +578,21 @@ void ResetControllers()
 {
   for (int port = 0; port < 4; port++)
     retro_set_controller_port_device(port, input_types[port]);
+}
+
+void BluetoothPassthroughBind()
+{
+  static bool was_pressed = false;
+  bool sync = Libretro::Input::input_cb(0, RETRO_DEVICE_KEYBOARD, 0, RETROK_F12);
+
+  if (sync && !was_pressed)
+  {
+    auto bt_real = WiiUtils::GetBluetoothRealDevice();
+    if (bt_real)
+      bt_real->TriggerSyncButtonPressedEvent();
+  }
+
+  was_pressed = sync;
 }
 
 }  // namespace Input

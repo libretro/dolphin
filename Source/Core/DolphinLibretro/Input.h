@@ -12,5 +12,6 @@ void InitStage2();
 void Update();
 void Shutdown();
 void ResetControllers();
+void BluetoothPassthroughBind();
 }
 }

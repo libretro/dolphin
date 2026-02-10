@@ -519,7 +519,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
     Libretro::Options::main_bluetooth::BLUETOOTH_PASSTHROUGH,
     "System Configuration > Bluetooth passthrough mode",
     "Bluetooth passthrough mode",
-    "Pass all traffic directly to the host's Bluetooth adapter. This might CRASH if your adaptor is not compatible.",
+    "Pass all traffic directly to the host's Bluetooth adapter. Press F12 to begin the sync process.",
     nullptr,
     CATEGORY_SYSCONF,
     {
