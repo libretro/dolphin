@@ -34,6 +34,7 @@
 #include "DolphinLibretro/Video.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
+#include "InputCommon/ControllerInterface/DualShockUDPClient/DualShockUDPClient.h"
 #include "UICommon/DiscordPresence.h"
 #include "UICommon/UICommon.h"
 #include "VideoCommon/AsyncRequests.h"
@@ -610,6 +611,30 @@ bool retro_load_game(const struct retro_game_info* game)
   // Graphics.GameSpecific
   Config::SetBase(Config::GFX_PERF_QUERIES_ENABLE,
                  Libretro::GetOption<bool>(gfx_gamespecific::GFX_PERF_QUERIES_ENABLE, /*def=*/false));
+
+#ifdef CIFACE_USE_DUALSHOCKUDPCLIENT
+  // wiimote - alternative input server
+  {
+    const bool dsu_enabled = Libretro::GetOption<bool>(
+        Libretro::Options::wiimote_dsu::DSU_ENABLED, false);
+
+    Config::SetBase(ciface::DualShockUDPClient::Settings::SERVERS_ENABLED, dsu_enabled);
+
+    if (dsu_enabled)
+    {
+      const int o1 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_1, 127);
+      const int o2 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_2, 0);
+      const int o3 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_3, 0);
+      const int o4 = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_IP_4, 1);
+      const int port = Libretro::GetOption<int>(Libretro::Options::wiimote_dsu::DSU_PORT, 26760);
+
+      const std::string address = fmt::format("{}.{}.{}.{}", o1, o2, o3, o4);
+      const std::string servers_entry = fmt::format("DS4:{}:{};", address, port);
+
+      Config::SetBase(ciface::DualShockUDPClient::Settings::SERVERS, servers_entry);
+    }
+  }
+#endif
 
   /* disable throttling emulation to match GetTargetRefreshRate() */
   Core::SetIsThrottlerTempDisabled(true);

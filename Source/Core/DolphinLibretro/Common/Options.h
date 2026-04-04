@@ -9,10 +9,39 @@
 #include "Common/Logging/Log.h"
 #include "Core/PowerPC/PowerPC.h"
 #include "DiscIO/Enums.h"
+#include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "VideoCommon/VideoConfig.h"
 
 #define MODIFIER_DISABLED_CONTROL "Disabled"
 #define MODIFIER_NO_MODIFIER "None"
+
+#define OCTET_VALUES \
+  {"0",nullptr},{"1",nullptr},{"2",nullptr},{"3",nullptr},{"4",nullptr}, \
+  {"5",nullptr},{"6",nullptr},{"7",nullptr},{"8",nullptr},{"9",nullptr}, \
+  {"10",nullptr},{"11",nullptr},{"12",nullptr},{"13",nullptr},{"14",nullptr}, \
+  {"15",nullptr},{"16",nullptr},{"17",nullptr},{"18",nullptr},{"19",nullptr}, \
+  {"20",nullptr},{"21",nullptr},{"22",nullptr},{"23",nullptr},{"24",nullptr}, \
+  {"25",nullptr},{"26",nullptr},{"27",nullptr},{"28",nullptr},{"29",nullptr}, \
+  {"30",nullptr},{"31",nullptr},{"32",nullptr},{"33",nullptr},{"34",nullptr}, \
+  {"35",nullptr},{"36",nullptr},{"37",nullptr},{"38",nullptr},{"39",nullptr}, \
+  {"40",nullptr},{"41",nullptr},{"42",nullptr},{"43",nullptr},{"44",nullptr}, \
+  {"45",nullptr},{"46",nullptr},{"47",nullptr},{"48",nullptr},{"49",nullptr}, \
+  {"50",nullptr},{"51",nullptr},{"52",nullptr},{"53",nullptr},{"54",nullptr}, \
+  {"55",nullptr},{"56",nullptr},{"57",nullptr},{"58",nullptr},{"59",nullptr}, \
+  {"60",nullptr},{"61",nullptr},{"62",nullptr},{"63",nullptr},{"64",nullptr}, \
+  {"65",nullptr},{"66",nullptr},{"67",nullptr},{"68",nullptr},{"69",nullptr}, \
+  {"70",nullptr},{"71",nullptr},{"72",nullptr},{"73",nullptr},{"74",nullptr}, \
+  {"75",nullptr},{"76",nullptr},{"77",nullptr},{"78",nullptr},{"79",nullptr}, \
+  {"80",nullptr},{"81",nullptr},{"82",nullptr},{"83",nullptr},{"84",nullptr}, \
+  {"85",nullptr},{"86",nullptr},{"87",nullptr},{"88",nullptr},{"89",nullptr}, \
+  {"90",nullptr},{"91",nullptr},{"92",nullptr},{"93",nullptr},{"94",nullptr}, \
+  {"95",nullptr},{"96",nullptr},{"97",nullptr},{"98",nullptr},{"99",nullptr}, \
+  {"100",nullptr},{"101",nullptr},{"102",nullptr},{"103",nullptr},{"104",nullptr}, \
+  {"105",nullptr},{"106",nullptr},{"107",nullptr},{"108",nullptr},{"109",nullptr}, \
+  {"110",nullptr},{"111",nullptr},{"112",nullptr},{"113",nullptr},{"114",nullptr}, \
+  {"115",nullptr},{"116",nullptr},{"117",nullptr},{"118",nullptr},{"119",nullptr}, \
+  {"120",nullptr},{"121",nullptr},{"122",nullptr},{"123",nullptr},{"124",nullptr}, \
+  {nullptr,nullptr}
 
 struct CachedOption
 {
@@ -326,6 +355,21 @@ namespace retroarch_core {
   constexpr const char ENABLE_DEFAULT_MOUSE_BINDINGS[] = "dolphin_default_mouse_bindings_enabled";
 
 }  // namespace wiimote
+
+// ======================================================
+// Wiimote (DSU)
+// ======================================================
+#ifdef CIFACE_USE_DUALSHOCKUDPCLIENT
+namespace wiimote_dsu {
+
+  constexpr const char DSU_ENABLED[] = "dolphin_dsu_enabled";
+  constexpr const char DSU_IP_1[] = "dolphin_dsu_ip_octet1";
+  constexpr const char DSU_IP_2[] = "dolphin_dsu_ip_octet2";
+  constexpr const char DSU_IP_3[] = "dolphin_dsu_ip_octet3";
+  constexpr const char DSU_IP_4[] = "dolphin_dsu_ip_octet4";
+  constexpr const char DSU_PORT[] = "dolphin_dsu_port";
+}
+#endif // namespace wiimote_dsu
 
 }  // namespace Options
 }  // namespace Libretro
