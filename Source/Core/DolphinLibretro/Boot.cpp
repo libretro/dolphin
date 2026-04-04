@@ -665,17 +665,18 @@ static bool retro_set_eject_state(bool ejected)
 
   eject_state = ejected;
 
-  if (!ejected)
-  {
-    if (disk_index < disk_paths.size())
+  Core::RunOnCPUThread(Core::System::GetInstance(), [ejected] {
+    auto& system = Core::System::GetInstance();
+    Core::CPUThreadGuard guard{system};
+
+    if (ejected)
+      system.GetDVDInterface().EjectDisc(guard, DVD::EjectCause::User);
+    else if (disk_index < disk_paths.size())
     {
-      Core::RunOnCPUThread(Core::System::GetInstance(), [] {
-        Core::CPUThreadGuard guard{Core::System::GetInstance()};
-        const std::string path = NormalizePath(disk_paths[disk_index]);
-        Core::System::GetInstance().GetDVDInterface().ChangeDisc(guard, path);
-      }, true);  // wait_for_completion = true
+      const std::string path = NormalizePath(disk_paths[disk_index]);
+      system.GetDVDInterface().ChangeDisc(guard, path);
     }
-  }
+  }, true); // wait_for_completion = true
 
   return true;
 }
