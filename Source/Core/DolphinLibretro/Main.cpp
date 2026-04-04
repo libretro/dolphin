@@ -244,26 +244,27 @@ void retro_run(void)
 
     Libretro::g_core_refresh_rate = system.GetVideoInterface().GetTargetRefreshRate();
 
-    // Expose memory layout to RetroArch for RetroAchievements.
-    // rcheevos matches descriptors by real_address from its console region
-    // definitions: GameCube MEM1 at 0x80000000, Wii MEM2 at 0x90000000.
-    // Without this, the unmapped fallback hits a disjoint-memory heuristic
-    // that null-fills MEM2, breaking Wii achievements entirely.
+    // Expose GameCube and Wii memory maps to libretro
     {
       auto& memory = system.GetMemory();
       struct retro_memory_descriptor descs[2] = {};
       unsigned num_descs = 0;
 
-      descs[num_descs].ptr   = memory.GetRAM();
+      descs[num_descs].ptr = memory.GetRAM();
       descs[num_descs].start = 0x80000000;
-      descs[num_descs].len   = memory.GetRamSizeReal();
+      descs[num_descs].len = memory.GetRamSizeReal();
+      descs[num_descs].flags = RETRO_MEMDESC_BIGENDIAN | RETRO_MEMORY_SYSTEM_RAM;
+      descs[num_descs].addrspace = "MEM1";
+
       num_descs++;
 
       if (system.IsWii())
       {
-        descs[num_descs].ptr   = memory.GetEXRAM();
+        descs[num_descs].ptr = memory.GetEXRAM();
         descs[num_descs].start = 0x90000000;
-        descs[num_descs].len   = memory.GetExRamSizeReal();
+        descs[num_descs].len = memory.GetExRamSizeReal();
+        descs[num_descs].flags = RETRO_MEMDESC_BIGENDIAN | RETRO_MEMORY_SYSTEM_RAM;
+        descs[num_descs].addrspace = "MEM2";
         num_descs++;
       }
 
@@ -342,6 +343,59 @@ void retro_run(void)
         )
       )
     );
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE))
+    g_Config.bSkipEFBCopyToRam = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE, true);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_ACCESS_ENABLE))
+    g_Config.bEFBAccessEnable = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_ACCESS_ENABLE, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_ACCESS_DEFER_INVALIDATION))
+    g_Config.bEFBAccessDeferInvalidation = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_ACCESS_DEFER_INVALIDATION, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_ACCESS_TILE_SIZE))
+    g_Config.iEFBAccessTileSize = Libretro::Options::GetCached<int>(Libretro::Options::gfx_hacks::EFB_ACCESS_TILE_SIZE, 64);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::BBOX_ENABLED))
+    g_Config.bBBoxEnable = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::BBOX_ENABLED, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::XFB_TO_TEXTURE_ENABLE))
+    g_Config.bSkipXFBCopyToRam = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::XFB_TO_TEXTURE_ENABLE, true);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_TO_VRAM))
+    g_Config.bDisableCopyToVRAM = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_VRAM, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::DEFER_EFB_COPIES))
+    g_Config.bDeferEFBCopies = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::DEFER_EFB_COPIES, true);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::IMMEDIATE_XFB))
+    g_Config.bImmediateXFB = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::IMMEDIATE_XFB, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::SKIP_DUPE_FRAMES))
+    g_Config.bSkipPresentingDuplicateXFBs = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::SKIP_DUPE_FRAMES, true);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_SCALED_COPY))
+    g_Config.bCopyEFBScaled = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_SCALED_COPY, true);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_EMULATE_FORMAT_CHANGES))
+    g_Config.bEFBEmulateFormatChanges = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_EMULATE_FORMAT_CHANGES, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::VERTEX_ROUNDING))
+    g_Config.bVertexRounding = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::VERTEX_ROUNDING, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::VI_SKIP))
+    g_Config.bVISkip = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::VI_SKIP, false);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::FAST_TEXTURE_SAMPLING))
+    g_Config.bFastTextureSampling = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::FAST_TEXTURE_SAMPLING, true);
+
+#ifdef __APPLE__
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::NO_MIPMAPPING))
+    g_Config.bNoMipmapping = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::NO_MIPMAPPING, false);
+#endif
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::TEXTURE_CACHE_ACCURACY))
+    g_Config.iSafeTextureCache_ColorSamples = Libretro::Options::GetCached<int>(Libretro::Options::gfx_settings::TEXTURE_CACHE_ACCURACY, 128);
 
   if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WII_SPEAK_MUTED))
     Config::SetCurrent(Config::MAIN_WII_SPEAK_MUTED,
