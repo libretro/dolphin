@@ -38,6 +38,7 @@
 #include "InputCommon/ControlReference/ExpressionParser.h"
 #include "InputCommon/ControllerEmu/Control/Control.h"
 #include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
+#include "InputCommon/ControllerEmu/ControlGroup/IRPassthrough.h"
 #include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/GCAdapter.h"
@@ -407,11 +408,22 @@ Device::Device(unsigned device, unsigned p) : m_device(device), m_port(p)
     AddButton(RETRO_DEVICE_ID_MOUSE_BUTTON_5, "Button5");
     return;
   case RETRO_DEVICE_POINTER:
-    AddButton(RETRO_DEVICE_ID_POINTER_PRESSED, "Pressed0", 0);
-    AddAxis(RETRO_DEVICE_ID_POINTER_X, -0x8000, "X0-", 0);
-    AddAxis(RETRO_DEVICE_ID_POINTER_X, 0x7FFF, "X0+", 0);
-    AddAxis(RETRO_DEVICE_ID_POINTER_Y, -0x8000, "Y0-", 0);
-    AddAxis(RETRO_DEVICE_ID_POINTER_Y, 0x7FFF, "Y0+", 0);
+    // Four touch indices, one per IR object. Index 0 keeps its old names.
+    {
+      static const char* const kPressed[] = { "Pressed0", "Pressed1", "Pressed2", "Pressed3" };
+      static const char* const kXNeg[]    = { "X0-", "X1-", "X2-", "X3-" };
+      static const char* const kXPos[]    = { "X0+", "X1+", "X2+", "X3+" };
+      static const char* const kYNeg[]    = { "Y0-", "Y1-", "Y2-", "Y3-" };
+      static const char* const kYPos[]    = { "Y0+", "Y1+", "Y2+", "Y3+" };
+      for (unsigned i = 0; i < 4; ++i)
+      {
+        AddButton(RETRO_DEVICE_ID_POINTER_PRESSED, kPressed[i], i);
+        AddAxis(RETRO_DEVICE_ID_POINTER_X, -0x8000, kXNeg[i], i);
+        AddAxis(RETRO_DEVICE_ID_POINTER_X, 0x7FFF, kXPos[i], i);
+        AddAxis(RETRO_DEVICE_ID_POINTER_Y, -0x8000, kYNeg[i], i);
+        AddAxis(RETRO_DEVICE_ID_POINTER_Y, 0x7FFF, kYPos[i], i);
+      }
+    }
     return;
   case RETRO_DEVICE_KEYBOARD:
     return;
@@ -943,6 +955,37 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned 
       const int irDeadzone = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_DEADZONE);
       static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[0].get())
         ->SetValue(irDeadzone); // IR DeadZone
+    }
+  }
+
+  // Raw IR: the frontend supplies the camera's view directly, bypassing the
+  // Point group and Total Yaw/Pitch. Objects arrive on pointer indices 0-3,
+  // X/Y over the camera's 0..1 field, PRESSED marking the object visible.
+  // Size is a constant; games only read it to reject noise.
+  if (f.irPassthrough)
+  {
+    auto* wmIRPass = static_cast<ControllerEmu::IRPassthrough*>(
+      wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IRPassthrough));
+    const bool passthrough =
+      Libretro::Options::GetCached<bool>(Libretro::Options::wiimote::IR_PASSTHROUGH);
+
+    if (wmIRPass)
+    {
+      const std::string devPointer =
+        Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_POINTER);
+      wmIRPass->enabled.SetValue(passthrough);
+      static const char* const kObj[] = { "0", "1", "2", "3" };
+      for (int i = 0; i < 4; ++i)
+      {
+        // Cleared when off; AreInputsBound() is half of what selects this path.
+        const std::string idx = kObj[i];
+        wmIRPass->SetControlExpression(i * 3 + 0,
+          passthrough ? "`" + devPointer + ":X" + idx + "+`" : "");
+        wmIRPass->SetControlExpression(i * 3 + 1,
+          passthrough ? "`" + devPointer + ":Y" + idx + "+`" : "");
+        wmIRPass->SetControlExpression(i * 3 + 2,
+          passthrough ? "`" + devPointer + ":Pressed" + idx + "` * 0.2" : "");
+      }
     }
   }
 
@@ -1516,6 +1559,8 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     f.irModifier = true;
     f.swingModifier = true;
     f.sideways = true;
+    // Raised at setup so the option applies on a cold boot.
+    f.irPassthrough = true;
     Libretro::Input::UpdateWiimoteMappings(f, port, device);
 
     wmShake->SetControlExpression(0, bindMouse("L2", devMouse + ":Middle"));  // Wiimote shake X

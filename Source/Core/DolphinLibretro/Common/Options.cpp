@@ -1715,6 +1715,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::wiimote::IR_PASSTHROUGH,
+    "Wiimote IR > Wiimote IR Passthrough",
+    "Wiimote IR Passthrough",
+    "Take the Wiimote camera's view of the sensor bar straight from the frontend, instead of deriving it from a cursor position. The frontend supplies up to four IR objects on pointer indices 1-4; Wiimote IR Mode, Total Yaw, Total Pitch and Vertical Offset are all bypassed. For frontends that know the real geometry (a VR room, a tracked light gun) this is exact, and it carries roll and distance, which a cursor cannot. Leave off for a mouse or a gamepad.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
 #if defined(HAS_OPENGL) && defined(__WEBOS__)
   {

@@ -19,11 +19,12 @@ struct WiimoteUpdateFlags
     bool sideways      = false;
     bool rumble        = false;
     bool gcMicBtn      = false;
+    bool irPassthrough = false;
 
     bool any() const {
         return irMode || irOffset || irYaw || irPitch ||
                irDeadzone || irModifier || swingModifier ||
-               swingAngle || sideways || rumble || gcMicBtn;
+               swingAngle || sideways || rumble || gcMicBtn || irPassthrough;
     }
 };
 
