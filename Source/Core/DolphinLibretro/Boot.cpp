@@ -304,8 +304,12 @@ bool retro_load_game(const struct retro_game_info* game)
   const std::string codehandler = std::string(sys_dir) + DIR_SEP GECKO_CODE_HANDLER;
 
   if (!File::Exists(codehandler))
+  {
+    OSD::AddMessage(fmt::format("Core file {} missing! Go to Online Updater ->\nCore System Files Downloader -> Install Dolphin.zip",
+      GECKO_CODE_HANDLER), OSD::Duration::VERY_LONG, OSD::Color::RED);
     ERROR_LOG_FMT(BOOT, "Core file {} missing! Go to Online Updater -> Core System Files Downloader -> Install Dolphin.zip",
       GECKO_CODE_HANDLER);
+  }
 
   // Main.Core
   Config::SetBase(Config::MAIN_CPU_CORE,
