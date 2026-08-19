@@ -112,15 +112,15 @@ android-arm64-v8a:
     NDK_ROOT: /android-sdk-linux/ndk/$ANDROID_NDK_VERSION
 
 # Android ARMv7a (for play only)
-android-armeabi-v7a:
-  extends:
-    - .libretro-android-cmake-armeabi-v7a
-    - .core-defs
-  variables:
-    ANDROID_NDK_VERSION: 29.0.14206865
-    API_LEVEL: 24
-    CORE_ARGS: -DLIBRETRO=ON -DENABLE_LTO=ON -DENABLE_GENERIC=ON
-    NDK_ROOT: /android-sdk-linux/ndk/$ANDROID_NDK_VERSION
+#android-armeabi-v7a:
+#  extends:
+#    - .libretro-android-cmake-armeabi-v7a
+#    - .core-defs
+#  variables:
+#    ANDROID_NDK_VERSION: 29.0.14206865
+#    API_LEVEL: 24
+#    CORE_ARGS: -DLIBRETRO=ON -DENABLE_LTO=ON -DENABLE_GENERIC=ON
+#    NDK_ROOT: /android-sdk-linux/ndk/$ANDROID_NDK_VERSION
 
 # Android x86_64 (for play only)
 android-x86_64:
