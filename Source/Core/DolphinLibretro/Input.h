@@ -1,10 +1,16 @@
 #pragma once
 
+#include <string>
+
 #include <libretro.h>
 #include "Common/WindowSystemInfo.h"
 
 // only 4 support sensors, but the array may be upto 8 if connected GC controllers
 #define NUM_CONTROLLERS_FOR_SENSORS 8
+
+// Sensors addressable on one port. Index 0 is the controller itself, index 1
+// whatever is plugged into it (for a Wii Remote, the Nunchuk).
+#define NUM_SENSOR_SUBDEVICES 2
 
 struct WiimoteUpdateFlags
 {
@@ -38,14 +44,21 @@ namespace Libretro
 namespace Input
 {
 constexpr std::string_view source = "Libretro";
-extern double g_accel_pos[NUM_CONTROLLERS_FOR_SENSORS][3];
-extern double g_accel_neg[NUM_CONTROLLERS_FOR_SENSORS][3];
-extern double g_gyro_pos[NUM_CONTROLLERS_FOR_SENSORS][3];
-extern double g_gyro_neg[NUM_CONTROLLERS_FOR_SENSORS][3];
+extern double g_accel_pos[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3];
+extern double g_accel_neg[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3];
+extern double g_gyro_pos[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3];
+extern double g_gyro_neg[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3];
 // Where the VR controller points, as one-sided -1..1 pairs: right, left, down, up.
 extern double g_point[NUM_CONTROLLERS_FOR_SENSORS][4];
 
 static retro_sensor_interface sensor_interface = {0};
+
+/// The ciface device name for one port's sub-device. Index 0 keeps the plain
+/// "Sensor", so pre-existing control expressions still resolve.
+inline std::string SensorDeviceName(unsigned subdevice)
+{
+  return subdevice == 0 ? std::string("Sensor") : "Sensor" + std::to_string(subdevice);
+}
 
 void Init(const WindowSystemInfo& wsi);
 void InitStage2();
@@ -55,7 +68,7 @@ bool UsesVRMotion(unsigned port);
 // Accelerometer in m/s^2 and gyroscope in rad/s about the remote's axes (+X left, +Y back,
 // +Z up), and where it points (-1..1, +X right, +Y up).
 void SetVRMotion(unsigned port, const float accel[3], const float gyro[3], const float point[2]);
-void UpdateAccelerometer(unsigned port);
+void UpdateAccelerometer(unsigned port, unsigned subdevice);
 void UpdateGyro(unsigned port);
 void Update();
 void Shutdown();
@@ -69,9 +82,14 @@ void UpdateGCMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned devic
 class SensorDevice : public ciface::Core::Device
 {
 public:
-  explicit SensorDevice(unsigned port) : m_port(port) {}
+  /// `port` picks the player, `subdevice` the sensor on that port.
+  SensorDevice(unsigned port, unsigned subdevice)
+      : m_port(port), m_subdevice(subdevice),
+        m_name(Libretro::Input::SensorDeviceName(subdevice))
+  {
+  }
 
-  std::string GetName() const override { return "Sensor"; }
+  std::string GetName() const override { return m_name; }
   std::string GetSource() const override { return std::string(Libretro::Input::source); }
   unsigned int GetPort() const { return m_port; }
   ciface::Core::DeviceRemoval UpdateInput() override { return ciface::Core::DeviceRemoval::Keep; }
@@ -94,26 +112,32 @@ public:
   /// subtract one direction from the other, rebuilding the signed value.
   void RegisterAll()
   {
-    AddInput(new ScalarInput("GyroX+", &Libretro::Input::g_gyro_pos[m_port][0]));
-    AddInput(new ScalarInput("GyroX-", &Libretro::Input::g_gyro_neg[m_port][0]));
-    AddInput(new ScalarInput("GyroY+", &Libretro::Input::g_gyro_pos[m_port][1]));
-    AddInput(new ScalarInput("GyroY-", &Libretro::Input::g_gyro_neg[m_port][1]));
-    AddInput(new ScalarInput("GyroZ+", &Libretro::Input::g_gyro_pos[m_port][2]));
-    AddInput(new ScalarInput("GyroZ-", &Libretro::Input::g_gyro_neg[m_port][2]));
-    AddInput(new ScalarInput("AccelX+", &Libretro::Input::g_accel_pos[m_port][0]));
-    AddInput(new ScalarInput("AccelX-", &Libretro::Input::g_accel_neg[m_port][0]));
-    AddInput(new ScalarInput("AccelY+", &Libretro::Input::g_accel_pos[m_port][1]));
-    AddInput(new ScalarInput("AccelY-", &Libretro::Input::g_accel_neg[m_port][1]));
-    AddInput(new ScalarInput("AccelZ+", &Libretro::Input::g_accel_pos[m_port][2]));
-    AddInput(new ScalarInput("AccelZ-", &Libretro::Input::g_accel_neg[m_port][2]));
-    AddInput(new ScalarInput("PointRight", &Libretro::Input::g_point[m_port][0]));
-    AddInput(new ScalarInput("PointLeft", &Libretro::Input::g_point[m_port][1]));
-    AddInput(new ScalarInput("PointDown", &Libretro::Input::g_point[m_port][2]));
-    AddInput(new ScalarInput("PointUp", &Libretro::Input::g_point[m_port][3]));
+    AddInput(new ScalarInput("GyroX+", &Libretro::Input::g_gyro_pos[m_port][m_subdevice][0]));
+    AddInput(new ScalarInput("GyroX-", &Libretro::Input::g_gyro_neg[m_port][m_subdevice][0]));
+    AddInput(new ScalarInput("GyroY+", &Libretro::Input::g_gyro_pos[m_port][m_subdevice][1]));
+    AddInput(new ScalarInput("GyroY-", &Libretro::Input::g_gyro_neg[m_port][m_subdevice][1]));
+    AddInput(new ScalarInput("GyroZ+", &Libretro::Input::g_gyro_pos[m_port][m_subdevice][2]));
+    AddInput(new ScalarInput("GyroZ-", &Libretro::Input::g_gyro_neg[m_port][m_subdevice][2]));
+    AddInput(new ScalarInput("AccelX+", &Libretro::Input::g_accel_pos[m_port][m_subdevice][0]));
+    AddInput(new ScalarInput("AccelX-", &Libretro::Input::g_accel_neg[m_port][m_subdevice][0]));
+    AddInput(new ScalarInput("AccelY+", &Libretro::Input::g_accel_pos[m_port][m_subdevice][1]));
+    AddInput(new ScalarInput("AccelY-", &Libretro::Input::g_accel_neg[m_port][m_subdevice][1]));
+    AddInput(new ScalarInput("AccelZ+", &Libretro::Input::g_accel_pos[m_port][m_subdevice][2]));
+    AddInput(new ScalarInput("AccelZ-", &Libretro::Input::g_accel_neg[m_port][m_subdevice][2]));
+    // Where the VR controller points belongs to the remote itself.
+    if (m_subdevice == 0)
+    {
+      AddInput(new ScalarInput("PointRight", &Libretro::Input::g_point[m_port][0]));
+      AddInput(new ScalarInput("PointLeft", &Libretro::Input::g_point[m_port][1]));
+      AddInput(new ScalarInput("PointDown", &Libretro::Input::g_point[m_port][2]));
+      AddInput(new ScalarInput("PointUp", &Libretro::Input::g_point[m_port][3]));
+    }
   }
 
 private:
   unsigned m_port;
+  unsigned m_subdevice;
+  std::string m_name;
 };
 
 class GyroDevice : public ciface::Core::Device
