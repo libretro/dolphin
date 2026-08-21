@@ -92,6 +92,11 @@ typedef enum {
     SENSOR_COUNT
 } sensor_type_t;
 
+/* Which sub-device of a Wii Remote's port the Nunchuk's accelerometer is. The
+ * remote itself is 0. A real Nunchuk has no gyroscope, so it is asked for an
+ * accelerometer and nothing else. */
+#define NUNCHUK_SENSOR_SUBDEVICE 1
+
 void retro_set_controller_port_device_gc(unsigned port, unsigned device);
 void retro_set_controller_port_device_wii(unsigned port, unsigned device);
 
@@ -106,12 +111,12 @@ static struct retro_rumble_interface rumble{};
 static unsigned input_types[8];
 static bool g_init_wiimotes = false;
 static bool s_sensor_init_pending = false;
-static bool sensor_enabled[NUM_CONTROLLERS_FOR_SENSORS][SENSOR_COUNT] = {};
+static bool sensor_enabled[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][SENSOR_COUNT] = {};
 static int port_max;
-double g_accel_pos[NUM_CONTROLLERS_FOR_SENSORS][3] = {}; // x, y, z
-double g_accel_neg[NUM_CONTROLLERS_FOR_SENSORS][3] = {}; // x, y, z
-double g_gyro_pos[NUM_CONTROLLERS_FOR_SENSORS][3] = {};  // x, y, z
-double g_gyro_neg[NUM_CONTROLLERS_FOR_SENSORS][3] = {};  // x, y, z
+double g_accel_pos[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3] = {}; // x, y, z
+double g_accel_neg[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3] = {}; // x, y, z
+double g_gyro_pos[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3] = {};  // x, y, z
+double g_gyro_neg[NUM_CONTROLLERS_FOR_SENSORS][NUM_SENSOR_SUBDEVICES][3] = {};  // x, y, z
 
 static struct retro_input_descriptor descGC[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT, "Left"},
@@ -660,18 +665,33 @@ void InitSensors()
   {
     if (sensor_interface.set_sensor_state)
     {
-      sensor_enabled[i][SENSOR_ACCELEROMETER] = sensor_interface.set_sensor_state(i, RETRO_SENSOR_ACCELEROMETER_ENABLE, 60);
-      sensor_enabled[i][SENSOR_GYRO] = sensor_interface.set_sensor_state(i, RETRO_SENSOR_GYROSCOPE_ENABLE, 60);
-
-      if (sensor_enabled[i][SENSOR_ACCELEROMETER] || sensor_enabled[i][SENSOR_GYRO])
+      for (unsigned s = 0; s < NUM_SENSOR_SUBDEVICES; s++)
       {
-        auto sensor = std::make_shared<SensorDevice>(i);
-        sensor->RegisterAll();
-        g_controller_interface.AddDevice(sensor);
-      }
+        // The sub-device rides in the high bits of the action. A frontend
+        // that does not know about sub-devices returns false for anything but
+        // 0; the flag stays clear and nothing binds.
+        const retro_sensor_action accel_on = static_cast<retro_sensor_action>(
+            RETRO_SENSOR_SUBDEVICE(s, RETRO_SENSOR_ACCELEROMETER_ENABLE));
+        sensor_enabled[i][s][SENSOR_ACCELEROMETER] =
+            sensor_interface.set_sensor_state(i, accel_on, 60);
 
-      INFO_LOG_FMT(BOOT, "Sensor interface: Port: {} ACCELEROMETER: {} GYROSCOPE: {}", i,
-        sensor_enabled[i][SENSOR_ACCELEROMETER], sensor_enabled[i][SENSOR_GYRO]);
+        // Only the remote itself has a gyroscope to ask for; a Nunchuk has none.
+        if (s == 0)
+        {
+          sensor_enabled[i][s][SENSOR_GYRO] =
+              sensor_interface.set_sensor_state(i, RETRO_SENSOR_GYROSCOPE_ENABLE, 60);
+        }
+
+        if (sensor_enabled[i][s][SENSOR_ACCELEROMETER] || sensor_enabled[i][s][SENSOR_GYRO])
+        {
+          auto sensor = std::make_shared<SensorDevice>(i, s);
+          sensor->RegisterAll();
+          g_controller_interface.AddDevice(sensor);
+        }
+
+        INFO_LOG_FMT(BOOT, "Sensor interface: Port: {} Sub-device: {} ACCELEROMETER: {} GYROSCOPE: {}",
+          i, s, sensor_enabled[i][s][SENSOR_ACCELEROMETER], sensor_enabled[i][s][SENSOR_GYRO]);
+      }
     }
   }
 
@@ -698,15 +718,20 @@ void Shutdown()
   {
     Pad::ResetRumble(i);
 
-    // Was crossed over and hardcoded to port 0, leaving sensors running.
-    if (sensor_enabled[i][SENSOR_ACCELEROMETER])
-      sensor_interface.set_sensor_state(i, RETRO_SENSOR_ACCELEROMETER_DISABLE, 0);
+    // Disable each sensor on the port it was enabled for.
+    for (unsigned s = 0; s < NUM_SENSOR_SUBDEVICES; s++)
+    {
+      if (sensor_enabled[i][s][SENSOR_ACCELEROMETER])
+        sensor_interface.set_sensor_state(i, static_cast<retro_sensor_action>(
+            RETRO_SENSOR_SUBDEVICE(s, RETRO_SENSOR_ACCELEROMETER_DISABLE)), 0);
 
-    if (sensor_enabled[i][SENSOR_GYRO])
-      sensor_interface.set_sensor_state(i, RETRO_SENSOR_GYROSCOPE_DISABLE, 0);
+      if (sensor_enabled[i][s][SENSOR_GYRO])
+        sensor_interface.set_sensor_state(i, static_cast<retro_sensor_action>(
+            RETRO_SENSOR_SUBDEVICE(s, RETRO_SENSOR_GYROSCOPE_DISABLE)), 0);
 
-    sensor_enabled[i][SENSOR_ACCELEROMETER] = false;
-    sensor_enabled[i][SENSOR_GYRO] = false;
+      sensor_enabled[i][s][SENSOR_ACCELEROMETER] = false;
+      sensor_enabled[i][s][SENSOR_GYRO] = false;
+    }
   }
 
   Keyboard::Shutdown();
@@ -716,20 +741,24 @@ void Shutdown()
   rumble.set_rumble_state = nullptr;
 }
 
-void UpdateAccelerometer(unsigned port)
+void UpdateAccelerometer(unsigned port, unsigned subdevice)
 {
-  if (!sensor_enabled[port][SENSOR_ACCELEROMETER] || !sensor_interface.get_sensor_input)
+  if (!sensor_enabled[port][subdevice][SENSOR_ACCELEROMETER] || !sensor_interface.get_sensor_input)
     return;
 
   static const float G = 9.80665f;
 
   // read raw sensor values
-  float ax = sensor_interface.get_sensor_input(port, RETRO_SENSOR_ACCELEROMETER_X) * G;
-  float ay = sensor_interface.get_sensor_input(port, RETRO_SENSOR_ACCELEROMETER_Y) * G;
-  float az = sensor_interface.get_sensor_input(port, RETRO_SENSOR_ACCELEROMETER_Z) * G;
+  float ax = sensor_interface.get_sensor_input(
+      port, RETRO_SENSOR_SUBDEVICE(subdevice, RETRO_SENSOR_ACCELEROMETER_X)) * G;
+  float ay = sensor_interface.get_sensor_input(
+      port, RETRO_SENSOR_SUBDEVICE(subdevice, RETRO_SENSOR_ACCELEROMETER_Y)) * G;
+  float az = sensor_interface.get_sensor_input(
+      port, RETRO_SENSOR_SUBDEVICE(subdevice, RETRO_SENSOR_ACCELEROMETER_Z)) * G;
 
-  // Collapsed, so a sideways remote with the dongle fitted still rotates.
-  if (wiimote_base_device(input_types[port]) == RETRO_DEVICE_WIIMOTE_SW)
+  // Holding the remote sideways rotates what its sensors read. Sub-device 0
+  // only: a Nunchuk is held the same way round regardless.
+  if (subdevice == 0 && wiimote_base_device(input_types[port]) == RETRO_DEVICE_WIIMOTE_SW)
   {
     float rx = -ay;   // rotate 90° clockwise
     float ry =  ax;
@@ -738,19 +767,20 @@ void UpdateAccelerometer(unsigned port)
   }
 
   // write rotated values
-  g_accel_pos[port][0] = std::max(0.0f, ax);
-  g_accel_neg[port][0] = std::max(0.0f, -ax);
+  g_accel_pos[port][subdevice][0] = std::max(0.0f, ax);
+  g_accel_neg[port][subdevice][0] = std::max(0.0f, -ax);
 
-  g_accel_pos[port][1] = std::max(0.0f, ay);
-  g_accel_neg[port][1] = std::max(0.0f, -ay);
+  g_accel_pos[port][subdevice][1] = std::max(0.0f, ay);
+  g_accel_neg[port][subdevice][1] = std::max(0.0f, -ay);
 
-  g_accel_pos[port][2] = std::max(0.0f, az);
-  g_accel_neg[port][2] = std::max(0.0f, -az);
+  g_accel_pos[port][subdevice][2] = std::max(0.0f, az);
+  g_accel_neg[port][subdevice][2] = std::max(0.0f, -az);
 }
 
 void UpdateGyro(unsigned port)
 {
-  if (!sensor_enabled[port][SENSOR_GYRO] || !sensor_interface.get_sensor_input)
+  // Sub-device 0 only: the gyroscope is the remote's, by way of MotionPlus.
+  if (!sensor_enabled[port][0][SENSOR_GYRO] || !sensor_interface.get_sensor_input)
     return;
 
   // rad/s about the remote's own axes: +X left, +Y back, +Z up.
@@ -766,16 +796,16 @@ void UpdateGyro(unsigned port)
     gy = ry;
   }
 
-  // Split across a one-sided pair; the expression parser clamps negatives away
-  // (see SensorDevice::RegisterAll).
-  g_gyro_pos[port][0] = std::max(0.0f, gx);
-  g_gyro_neg[port][0] = std::max(0.0f, -gx);
+  // Split each axis across a one-sided pair: the expression parser cannot
+  // carry a negative value (see SensorDevice::RegisterAll).
+  g_gyro_pos[port][0][0] = std::max(0.0f, gx);
+  g_gyro_neg[port][0][0] = std::max(0.0f, -gx);
 
-  g_gyro_pos[port][1] = std::max(0.0f, gy);
-  g_gyro_neg[port][1] = std::max(0.0f, -gy);
+  g_gyro_pos[port][0][1] = std::max(0.0f, gy);
+  g_gyro_neg[port][0][1] = std::max(0.0f, -gy);
 
-  g_gyro_pos[port][2] = std::max(0.0f, gz);
-  g_gyro_neg[port][2] = std::max(0.0f, -gz);
+  g_gyro_pos[port][0][2] = std::max(0.0f, gz);
+  g_gyro_neg[port][0][2] = std::max(0.0f, -gz);
 }
 
 void ResetControllers(const WiimoteUpdateFlags& f)
@@ -848,7 +878,8 @@ void Update()
 
   for (int i = 0; i < port_max; ++i)
   {
-    UpdateAccelerometer(i);
+    for (unsigned s = 0; s < NUM_SENSOR_SUBDEVICES; ++s)
+      UpdateAccelerometer(i, s);
     UpdateGyro(i);
   }
 
@@ -869,12 +900,12 @@ void Update()
   }
 }
 
-static std::string GetQualifiedNameSensor(unsigned port)
+static std::string GetQualifiedNameSensor(unsigned port, unsigned subdevice)
 {
   return ciface::Core::DeviceQualifier(
       std::string(Libretro::Input::source),
       static_cast<int>(port),
-      std::string("Sensor")
+      Libretro::Input::SensorDeviceName(subdevice)
   ).ToString();
 }
 
@@ -1538,10 +1569,8 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
       ControllerEmu::ControlGroup* ncButtons = wm->GetNunchukGroup(NunchukGroup::Buttons);
       ControllerEmu::ControlGroup* ncStick = wm->GetNunchukGroup(NunchukGroup::Stick);
       ControllerEmu::ControlGroup* ncShake = wm->GetNunchukGroup(NunchukGroup::Shake);
-#if 0
-      ControllerEmu::ControlGroup* ncTilt = wm->GetNunchukGroup(NunchukGroup::Tilt);
-      ControllerEmu::ControlGroup* ncSwing = wm->GetNunchukGroup(NunchukGroup::Swing);
-#endif
+      // Nunchuk Tilt and Swing stay unbound: its motion arrives below as a
+      // real accelerometer, and both sticks are already spoken for.
       ncButtons->SetControlExpression(0, "X");                             // C
       ncButtons->SetControlExpression(1, "Y");                             // Z
       ncStick->SetControlExpression(0, "`" + devAnalog + ":Y0-`");         // Up
@@ -1578,58 +1607,86 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
         wmButtons->SetControlExpression(3, "A");  // 2
       }
 
-      // Map accel data to tilt expressions
-      if (Libretro::Input::sensor_enabled[port][SENSOR_ACCELEROMETER] ||
-          Libretro::Input::sensor_enabled[port][SENSOR_GYRO])
-      {
-        std::string devSensor = Libretro::Input::GetQualifiedNameSensor(port);
-
-        if (Libretro::Input::sensor_enabled[port][SENSOR_ACCELEROMETER])
-        {
-          // Accelerometer (6 inputs: Up, Down, Left, Right, Forward, Backward)
-          // Indices must match WiimoteEmu::LoadDefaults ordering (0..5)
-          auto* wmAccel = static_cast<ControllerEmu::IMUAccelerometer*>(
-            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer));
-          if (wmAccel)
-          {
-            wmAccel->SetControlExpression(0, "`" + devSensor + ":AccelZ+`");  // Up
-            wmAccel->SetControlExpression(1, "`" + devSensor + ":AccelZ-`");  // Down
-            wmAccel->SetControlExpression(2, "`" + devSensor + ":AccelX+`");  // Left
-            wmAccel->SetControlExpression(3, "`" + devSensor + ":AccelX-`");  // Right
-            wmAccel->SetControlExpression(4, "`" + devSensor + ":AccelY-`");  // Forward
-            wmAccel->SetControlExpression(5, "`" + devSensor + ":AccelY+`");  // Backward
-          }
-        }
-
-        // A sibling, not a child: nested, gyro-without-accelerometer bound neither.
-        if (Libretro::Input::sensor_enabled[port][SENSOR_GYRO])
-        {
-          // Gyroscope (6 inputs: PitchUp/Down, RollLeft/Right, YawLeft/Right)
-          auto* wmGyro = static_cast<ControllerEmu::IMUGyroscope*>(
-            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope));
-          if (wmGyro)
-          {
-            // Right-hand rule about +X left, +Y back, +Z up: +X is pitch down,
-            // +Y rolls the top left, +Z swings the nose left. GetRawState()
-            // reads these as [1]-[0], [2]-[3], [4]-[5].
-            wmGyro->SetControlExpression(0, "`" + devSensor + ":GyroX-`");  // Pitch Up
-            wmGyro->SetControlExpression(1, "`" + devSensor + ":GyroX+`");  // Pitch Down
-            wmGyro->SetControlExpression(2, "`" + devSensor + ":GyroY+`");  // Roll Left
-            wmGyro->SetControlExpression(3, "`" + devSensor + ":GyroY-`");  // Roll Right
-            wmGyro->SetControlExpression(4, "`" + devSensor + ":GyroZ+`");  // Yaw Left
-            wmGyro->SetControlExpression(5, "`" + devSensor + ":GyroZ-`");  // Yaw Right
-          }
-        }
-      }
-      else
-      {
-        wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y0-`");  // Forward
-        wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y0+`");  // Backward
-        wmTilt->SetControlExpression(2, "`" + devAnalog + ":X0-`");  // Left
-        wmTilt->SetControlExpression(3, "`" + devAnalog + ":X0+`");  // Right
-      }
       wmButtons->SetControlExpression(4, "Select");                // -
       wmButtons->SetControlExpression(5, "Start");                 // +
+    }
+
+    // Motion, for every remote configuration rather than only the ones with
+    // nothing on the expansion port.
+    if (Libretro::Input::sensor_enabled[port][0][SENSOR_ACCELEROMETER] ||
+        Libretro::Input::sensor_enabled[port][0][SENSOR_GYRO])
+    {
+      std::string devSensor = Libretro::Input::GetQualifiedNameSensor(port, 0);
+
+      if (Libretro::Input::sensor_enabled[port][0][SENSOR_ACCELEROMETER])
+      {
+        // Accelerometer (6 inputs: Up, Down, Left, Right, Forward, Backward)
+        // Indices must match WiimoteEmu::LoadDefaults ordering (0..5)
+        auto* wmAccel = static_cast<ControllerEmu::IMUAccelerometer*>(
+          wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer));
+        if (wmAccel)
+        {
+          wmAccel->SetControlExpression(0, "`" + devSensor + ":AccelZ+`");  // Up
+          wmAccel->SetControlExpression(1, "`" + devSensor + ":AccelZ-`");  // Down
+          wmAccel->SetControlExpression(2, "`" + devSensor + ":AccelX+`");  // Left
+          wmAccel->SetControlExpression(3, "`" + devSensor + ":AccelX-`");  // Right
+          wmAccel->SetControlExpression(4, "`" + devSensor + ":AccelY-`");  // Forward
+          wmAccel->SetControlExpression(5, "`" + devSensor + ":AccelY+`");  // Backward
+        }
+      }
+
+      // A sibling of the accelerometer branch: gyro without accelerometer
+      // must still bind.
+      if (Libretro::Input::sensor_enabled[port][0][SENSOR_GYRO])
+      {
+        // Gyroscope (6 inputs: PitchUp/Down, RollLeft/Right, YawLeft/Right)
+        auto* wmGyro = static_cast<ControllerEmu::IMUGyroscope*>(
+          wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope));
+        if (wmGyro)
+        {
+          // Right-hand rule about the accelerometer's frame (+X left, +Y
+          // back, +Z up): +X is pitch down, +Y rolls the top left, +Z swings
+          // the nose left. GetRawState() reads [1]-[0], [2]-[3], [4]-[5].
+          wmGyro->SetControlExpression(0, "`" + devSensor + ":GyroX-`");  // Pitch Up
+          wmGyro->SetControlExpression(1, "`" + devSensor + ":GyroX+`");  // Pitch Down
+          wmGyro->SetControlExpression(2, "`" + devSensor + ":GyroY+`");  // Roll Left
+          wmGyro->SetControlExpression(3, "`" + devSensor + ":GyroY-`");  // Roll Right
+          wmGyro->SetControlExpression(4, "`" + devSensor + ":GyroZ+`");  // Yaw Left
+          wmGyro->SetControlExpression(5, "`" + devSensor + ":GyroZ-`");  // Yaw Right
+        }
+      }
+    }
+    else
+    {
+      // No sensors, so tilt falls back to a stick -- the right one when a
+      // Nunchuk is fitted, since the left one is the Nunchuk's.
+      const std::string tiltAxis = (device == RETRO_DEVICE_WIIMOTE_NC) ? "1" : "0";
+      wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y" + tiltAxis + "-`");  // Forward
+      wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y" + tiltAxis + "+`");  // Backward
+      wmTilt->SetControlExpression(2, "`" + devAnalog + ":X" + tiltAxis + "-`");  // Left
+      wmTilt->SetControlExpression(3, "`" + devAnalog + ":X" + tiltAxis + "+`");  // Right
+    }
+
+    // The Nunchuk's own accelerometer. Additive:
+    // Nunchuk::BuildDesiredExtensionState composes this group with swing, tilt
+    // and shake, and substitutes a flat device when nothing is bound.
+    if (device == RETRO_DEVICE_WIIMOTE_NC &&
+        Libretro::Input::sensor_enabled[port][NUNCHUK_SENSOR_SUBDEVICE][SENSOR_ACCELEROMETER])
+    {
+      auto* ncAccel = static_cast<ControllerEmu::IMUAccelerometer*>(
+        wm->GetNunchukGroup(NunchukGroup::IMUAccelerometer));
+      if (ncAccel)
+      {
+        // Same six-index order and frame as the remote's above.
+        const std::string devNunchuk =
+            Libretro::Input::GetQualifiedNameSensor(port, NUNCHUK_SENSOR_SUBDEVICE);
+        ncAccel->SetControlExpression(0, "`" + devNunchuk + ":AccelZ+`");  // Up
+        ncAccel->SetControlExpression(1, "`" + devNunchuk + ":AccelZ-`");  // Down
+        ncAccel->SetControlExpression(2, "`" + devNunchuk + ":AccelX+`");  // Left
+        ncAccel->SetControlExpression(3, "`" + devNunchuk + ":AccelX-`");  // Right
+        ncAccel->SetControlExpression(4, "`" + devNunchuk + ":AccelY-`");  // Forward
+        ncAccel->SetControlExpression(5, "`" + devNunchuk + ":AccelY+`");  // Backward
+      }
     }
 
     wmButtons->SetControlExpression(6, "R3");  // Home
