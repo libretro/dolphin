@@ -1433,7 +1433,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
     Libretro::Options::gfx_gamespecific::GFX_PERF_QUERIES_ENABLE,
     "Graphics > Game Specific > Performance Queries",
     "Performance Queries",
-    "Enable performance queiries.",
+    "Enable performance queries.",
     nullptr,
     CATEGORY_GFX_GAMESPECIFIC,
     {
