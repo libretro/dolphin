@@ -469,6 +469,9 @@ bool retro_load_game(const struct retro_game_info* game)
   if (Common::is_uwp())
     Config::SetBase(Config::GFX_SHADER_CACHE, false);
 
+  Config::SetBase(Config::GFX_MODS_ENABLE,
+    Libretro::GetOption<bool>(gfx_settings::MODS_ENABLE, /*def=*/false));
+
   // Graphics.Enhancements
   Config::SetBase(Config::GFX_ENHANCE_FORCE_TEXTURE_FILTERING,
                   static_cast<TextureFilteringMode>(
