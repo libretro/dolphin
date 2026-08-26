@@ -1030,6 +1030,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::gfx_settings::MODS_ENABLE,
+    "Graphics > Settings > Enable Mods",
+    "Enable Mods",
+    "Loads graphic mods from User/Load/GraphicsMods.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
   // ========== Graphics.Enhancements ==========
   {
