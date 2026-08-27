@@ -38,7 +38,8 @@ namespace Input
 constexpr std::string_view source = "Libretro";
 extern double g_accel_pos[NUM_CONTROLLERS_FOR_SENSORS][3];
 extern double g_accel_neg[NUM_CONTROLLERS_FOR_SENSORS][3];
-extern double g_gyro[NUM_CONTROLLERS_FOR_SENSORS][3];
+extern double g_gyro_pos[NUM_CONTROLLERS_FOR_SENSORS][3];
+extern double g_gyro_neg[NUM_CONTROLLERS_FOR_SENSORS][3];
 
 static retro_sensor_interface sensor_interface = {0};
 
@@ -79,11 +80,17 @@ private:
   };
 
 public:
+  /// Each axis is a PAIR of one-sided inputs: ControlExpression clamps a control
+  /// to >= 0, so a lone signed input loses half its travel. The IMU groups
+  /// subtract one direction from the other, rebuilding the signed value.
   void RegisterAll()
   {
-    AddInput(new ScalarInput("GyroX",  &Libretro::Input::g_gyro[m_port][0]));
-    AddInput(new ScalarInput("GyroY",  &Libretro::Input::g_gyro[m_port][1]));
-    AddInput(new ScalarInput("GyroZ",  &Libretro::Input::g_gyro[m_port][2]));
+    AddInput(new ScalarInput("GyroX+", &Libretro::Input::g_gyro_pos[m_port][0]));
+    AddInput(new ScalarInput("GyroX-", &Libretro::Input::g_gyro_neg[m_port][0]));
+    AddInput(new ScalarInput("GyroY+", &Libretro::Input::g_gyro_pos[m_port][1]));
+    AddInput(new ScalarInput("GyroY-", &Libretro::Input::g_gyro_neg[m_port][1]));
+    AddInput(new ScalarInput("GyroZ+", &Libretro::Input::g_gyro_pos[m_port][2]));
+    AddInput(new ScalarInput("GyroZ-", &Libretro::Input::g_gyro_neg[m_port][2]));
     AddInput(new ScalarInput("AccelX+", &Libretro::Input::g_accel_pos[m_port][0]));
     AddInput(new ScalarInput("AccelX-", &Libretro::Input::g_accel_neg[m_port][0]));
     AddInput(new ScalarInput("AccelY+", &Libretro::Input::g_accel_pos[m_port][1]));
@@ -133,7 +140,7 @@ private:
   };
 
 public:
-  GyroDevice(unsigned port) : m_port(port)
+  GyroDevice(unsigned port)
   {
     AddInput(new GyroAxis(port, GyroAxis::PITCH, "Pitch"));
     AddInput(new GyroAxis(port, GyroAxis::ROLL, "Roll"));
@@ -142,7 +149,4 @@ public:
 
   std::string GetName() const override { return "Gyroscope"; }
   std::string GetSource() const override { return std::string(Libretro::Input::source); }
-
-private:
-  unsigned m_port;
 };
