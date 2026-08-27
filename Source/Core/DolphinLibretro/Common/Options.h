@@ -303,6 +303,7 @@ namespace wiimote {
   constexpr const char IR_MODIFIER[] = "dolphin_ir_modifier";
   constexpr const char SWING_MODIFIER[] = "dolphin_swing_modifier";
   constexpr const char SWING_ANGLE[] = "dolphin_swing_angle";
+  constexpr const char IR_PASSTHROUGH[] = "dolphin_ir_passthrough";
 }  // namespace wiimote
 
 // ======================================================
