@@ -16,7 +16,8 @@ struct WiimoteUpdateFlags
     bool irModifier    = false;
     bool swingModifier = false;
     bool swingAngle    = false;
-    bool sideways      = false;
+    bool sideways      = false; // hotkey
+    bool upright       = false; // hotkey
     bool rumble        = false;
     bool gcMicBtn      = false;
     bool irPassthrough = false;

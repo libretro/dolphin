@@ -389,6 +389,7 @@ void retro_run(void)
     flags.swingModifier = Libretro::Options::IsUpdated(Libretro::Options::wiimote::SWING_MODIFIER);
     flags.swingAngle = Libretro::Options::IsUpdated(Libretro::Options::wiimote::SWING_ANGLE);
     flags.sideways = Libretro::Options::IsUpdated(Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE);
+    flags.upright = Libretro::Options::IsUpdated(Libretro::Options::wiimote::HOTKEY_UPRIGHT_TOGGLE);
     flags.irPassthrough = Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_PASSTHROUGH);
   }
 
