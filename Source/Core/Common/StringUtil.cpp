@@ -849,7 +849,7 @@ std::u16string UTF8ToUTF16(std::string_view input)
 // This is a replacement for path::u8path, which is deprecated starting with C++20.
 std::filesystem::path StringToPath(std::string_view path)
 {
-#ifdef _MSC_VER
+#ifdef _WIN32
   return std::filesystem::path(UTF8ToWString(path));
 #else
   return std::filesystem::path(path);
