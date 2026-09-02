@@ -1483,6 +1483,31 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "L3"
   },
+  {
+    Libretro::Options::wiimote::HOTKEY_UPRIGHT_TOGGLE,
+    "WiiMote Upright > Toggle Button",
+    "Upright Toggle Button",
+    "Button used to toggle upright mode. Can be disabled.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { MODIFIER_DISABLED_CONTROL, "Disabled" },
+      { "L3",     nullptr },
+      { "R3",     nullptr },
+      { "L1",     nullptr },
+      { "R1",     nullptr },
+      { "L2",     nullptr },
+      { "R2",     nullptr },
+      { "A",      nullptr },
+      { "B",      nullptr },
+      { "X",      nullptr },
+      { "Y",      nullptr },
+      { "Start",  nullptr },
+      { "Select", nullptr },
+      { nullptr,  nullptr }
+    },
+    "Disabled"
+  },
 
   // ========== Wiimote IR ==========
   {

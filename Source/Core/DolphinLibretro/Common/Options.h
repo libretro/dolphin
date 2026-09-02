@@ -293,6 +293,7 @@ namespace wiimote {
 
   // General and options
   constexpr const char HOTKEY_SIDEWAYS_TOGGLE[] = "dolphin_hotkey_sideways_toggle";
+  constexpr const char HOTKEY_UPRIGHT_TOGGLE[] = "dolphin_hotkey_upright_toggle";
 
   // Motion simulation
   constexpr const char IR_MODE[] = "dolphin_ir_mode";

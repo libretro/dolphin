@@ -207,7 +207,7 @@ static struct retro_input_descriptor descWiimote[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2, "Shake Wiimote"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "+"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "-"},
-    //{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
+    //{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"}, // see: HOTKEY_SIDEWAYS_TOGGLE
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Tilt Left/Right"},
@@ -228,7 +228,7 @@ static struct retro_input_descriptor descWiimoteSideways[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2, "Shake Wiimote"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "+"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "-"},
-    //{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
+    //{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"}, // see: HOTKEY_SIDEWAYS_TOGGLE
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Tilt Left/Right"},
@@ -569,7 +569,7 @@ void InitStage2()
     if (Libretro::Options::GetCached<int>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII))
     {
       static struct retro_controller_description wiimote_desc[] = {
-          {"WiiMote", RETRO_DEVICE_WIIMOTE},
+          {"WiiMote (upright)", RETRO_DEVICE_WIIMOTE},
           {"WiiMote (sideways)", RETRO_DEVICE_WIIMOTE_SW},
           {"WiiMote + Nunchuk", RETRO_DEVICE_WIIMOTE_NC},
           {"WiiMote + Classic Controller", RETRO_DEVICE_WIIMOTE_CC},
@@ -600,7 +600,7 @@ void InitStage2()
     else // Both Wii devices and GC controllers listed in ports 1-4, ports 5-8 are unused
     {
       static struct retro_controller_description wii_and_gc_desc[] = {
-          {"WiiMote", RETRO_DEVICE_WIIMOTE},
+          {"WiiMote (upright)", RETRO_DEVICE_WIIMOTE},
           {"WiiMote (sideways)", RETRO_DEVICE_WIIMOTE_SW},
           {"WiiMote + Nunchuk", RETRO_DEVICE_WIIMOTE_NC},
           {"WiiMote + Classic Controller", RETRO_DEVICE_WIIMOTE_CC},
@@ -1054,22 +1054,31 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned 
       ->SetValue(swingAngle);                                           // Swing/Angle
   }
 
+  ControllerEmu::ControlGroup* wmHotkeys = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Hotkeys);
+
   // Sideways toggle
-  if (f.sideways)
+  if (wmHotkeys && f.sideways)
   {
-    ControllerEmu::ControlGroup* wmHotkeys = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Hotkeys);
     std::string sidewaysToggle =
       Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE);
 
     wmHotkeys->SetControlExpression(0,
       sidewaysToggle != MODIFIER_DISABLED_CONTROL ? sidewaysToggle : "");  // Sideways Toggle (L3 default)
+  }
 
+  // Upright toggle
+  if (wmHotkeys && f.upright)
+  {
+    std::string uprightToggle =
+      Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::HOTKEY_UPRIGHT_TOGGLE);
+
+    wmHotkeys->SetControlExpression(1,
+      uprightToggle != MODIFIER_DISABLED_CONTROL ? uprightToggle : "");  // Upright Toggle
+  }
 #if 0
-    wmHotkeys->SetControlExpression(1, "");  // Upright Toggle
     wmHotkeys->SetControlExpression(2, "");  // Sideways Hold
     wmHotkeys->SetControlExpression(3, "");  // Upright Hold
 #endif
-  }
 
   // Rumble
   if (f.rumble)
@@ -1231,6 +1240,7 @@ void refresh_all_wiimote_flags(unsigned port, unsigned device)
 {
   WiimoteUpdateFlags f;
   f.sideways     = true;
+  f.upright      = true;
   f.irModifier   = true;
   f.swingModifier = true;
   f.irMode       = true;
@@ -1623,6 +1633,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     f.irModifier = true;
     f.swingModifier = true;
     f.sideways = true;
+    f.upright = true;
     // Raised at setup so the option applies on a cold boot.
     f.irPassthrough = true;
     Libretro::Input::UpdateWiimoteMappings(f, port, device);
