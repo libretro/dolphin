@@ -798,6 +798,8 @@ void ResetControllers(const WiimoteUpdateFlags& f)
 
   for (int port = 0; port < port_max; port++)
     retro_set_controller_port_device(port, input_types[port]);
+
+  UpdateInputDescriptors();
 }
 
 void BluetoothPassthroughBind()
@@ -1172,6 +1174,12 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
   {
     retro_set_controller_port_device_wii(port, device);
   }
+}
+
+void UpdateInputDescriptors()
+{
+  auto& system = Core::System::GetInstance();
+  bool altGCPorts = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII);
 
   std::vector<retro_input_descriptor> all_descs;
 
