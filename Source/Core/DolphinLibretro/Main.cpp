@@ -300,6 +300,22 @@ void retro_run(void)
       struct retro_memory_map mmap = {descs, num_descs};
       Libretro::environ_cb(RETRO_ENVIRONMENT_SET_MEMORY_MAPS, &mmap);
     }
+
+    if (!Libretro::g_pending_load_state.empty())
+    {
+      auto pending = std::move(Libretro::g_pending_load_state);
+      Libretro::g_pending_load_state.clear();
+      AsyncRequests* ar = AsyncRequests::GetInstance();
+      if (system.IsDualCoreMode())
+        ar->SetPassthrough(true);
+      Core::RunOnCPUThread(system, [&] {
+        u8* ptr = reinterpret_cast<u8*>(pending.data());
+        PointerWrap p(&ptr, pending.size(), PointerWrap::Mode::Read);
+        State::DoState(system, p);
+      }, true);
+      if (system.IsDualCoreMode())
+        ar->SetPassthrough(false);
+    }
   }
 
   if(!Libretro::g_emuthread_launched)
@@ -505,6 +521,9 @@ void retro_run(void)
 
 size_t retro_serialize_size(void)
 {
+  if (!Libretro::g_emuthread_launched)
+    return 0;
+
   size_t size = 0;
 
   Core::System& system = Core::System::GetInstance();
@@ -526,6 +545,9 @@ size_t retro_serialize_size(void)
 
 bool retro_serialize(void* data, size_t size)
 {
+  if (!Libretro::g_emuthread_launched)
+    return false;
+
   Core::System& system = Core::System::GetInstance();
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
@@ -552,6 +574,13 @@ bool retro_serialize(void* data, size_t size)
 
 bool retro_unserialize(const void* data, size_t size)
 {
+  if (!Libretro::g_emuthread_launched)
+  {
+    const auto* bytes = static_cast<const unsigned char*>(data);
+    Libretro::g_pending_load_state.assign(bytes, bytes + size);
+    return true;
+  }
+
   Core::System& system = Core::System::GetInstance();
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
