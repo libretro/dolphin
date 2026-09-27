@@ -920,6 +920,12 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "4", "4x Native (2560x2112) for 1440p" },
       { "5", "5x Native (3200x2640)" },
       { "6", "6x Native (3840x3168) for 4K" },
+      { "7", "7x Native (4480x3696)" },
+      { "8", "8x Native (5120x4224) for 5K" },
+      { "9", "9x Native (5760x4752)" },
+      { "10", "10x Native (6400x5280)" },
+      { "11", "11x Native (7040x5808)" },
+      { "12", "12x Native (7680x6336) for 8K" },
       { nullptr, nullptr }
     },
     "1"
