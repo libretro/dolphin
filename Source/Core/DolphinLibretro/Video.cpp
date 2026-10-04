@@ -240,11 +240,13 @@ bool SetHWRender(retro_hw_context_type type, const int version_major, const int 
           RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION,
           Vk::GetApplicationInfo,
           Vk::CreateDevice,
-          NULL, // destroy_device
+          NULL,  // destroy_device
 #ifdef __APPLE__
-          Vk::CreateInstance, // create_instance (v2 API)
-          NULL, // create_device2
+          Vk::CreateInstance,  // create_instance (v2 API)
+#else
+          NULL,  // create_instance
 #endif
+          Vk::CreateDevice2,  // create_device2 (v2 API)
       };
       environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE, (void*)&iface);
 
@@ -664,12 +666,12 @@ VkInstance CreateInstance(PFN_vkGetInstanceProcAddr get_instance_proc_addr,
 }
 #endif
 
-bool CreateDevice(retro_vulkan_context* context, VkInstance instance, VkPhysicalDevice gpu,
-                         VkSurfaceKHR surface, PFN_vkGetInstanceProcAddr get_instance_proc_addr,
-                         const char** required_device_extensions,
-                         unsigned num_required_device_extensions,
-                         const char** required_device_layers, unsigned num_required_device_layers,
-                         const VkPhysicalDeviceFeatures* required_features)
+static bool CreateDeviceInternal(
+    retro_vulkan_context* context, VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface,
+    PFN_vkGetInstanceProcAddr get_instance_proc_addr, const char** required_device_extensions,
+    unsigned num_required_device_extensions, const char** required_device_layers,
+    unsigned num_required_device_layers, const VkPhysicalDeviceFeatures* required_features,
+    retro_vulkan_create_device_wrapper_t create_device_wrapper, void* opaque)
 {
   assert(g_video_backend->GetConfigName() == "Vulkan");
 
@@ -677,7 +679,7 @@ bool CreateDevice(retro_vulkan_context* context, VkInstance instance, VkPhysical
 
   Init(instance, gpu, surface, get_instance_proc_addr, required_device_extensions,
        num_required_device_extensions, required_device_layers, num_required_device_layers,
-       required_features);
+       required_features, create_device_wrapper, opaque);
 
   if (!Vulkan::LoadVulkanInstanceFunctions(instance))
   {
@@ -699,7 +701,8 @@ bool CreateDevice(retro_vulkan_context* context, VkInstance instance, VkPhysical
 
   if (gpu == VK_NULL_HANDLE)
     gpu = gpu_list[0];
-  Vulkan::g_vulkan_context = Vulkan::VulkanContext::Create(instance, gpu, surface, false, false, VK_API_VERSION_1_0);
+  Vulkan::g_vulkan_context =
+      Vulkan::VulkanContext::Create(instance, gpu, surface, false, false, VK_API_VERSION_1_0);
   if (!Vulkan::g_vulkan_context)
   {
     ERROR_LOG_FMT(VIDEO, "Failed to create Vulkan device");
@@ -715,6 +718,32 @@ bool CreateDevice(retro_vulkan_context* context, VkInstance instance, VkPhysical
   context->presentation_queue_family_index = context->queue_family_index;
 
   return true;
+}
+
+bool CreateDevice(retro_vulkan_context* context, VkInstance instance, VkPhysicalDevice gpu,
+                  VkSurfaceKHR surface, PFN_vkGetInstanceProcAddr get_instance_proc_addr,
+                  const char** required_device_extensions, unsigned num_required_device_extensions,
+                  const char** required_device_layers, unsigned num_required_device_layers,
+                  const VkPhysicalDeviceFeatures* required_features)
+{
+  return CreateDeviceInternal(context, instance, gpu, surface, get_instance_proc_addr,
+                              required_device_extensions, num_required_device_extensions,
+                              required_device_layers, num_required_device_layers, required_features,
+                              nullptr, nullptr);
+}
+
+bool CreateDevice2(retro_vulkan_context* context, VkInstance instance, VkPhysicalDevice gpu,
+                   VkSurfaceKHR surface, PFN_vkGetInstanceProcAddr get_instance_proc_addr,
+                   retro_vulkan_create_device_wrapper_t create_device_wrapper, void* opaque)
+{
+  if (!create_device_wrapper)
+  {
+    ERROR_LOG_FMT(VIDEO, "Vulkan negotiation v2 requires a device creation wrapper.");
+    return false;
+  }
+
+  return CreateDeviceInternal(context, instance, gpu, surface, get_instance_proc_addr, nullptr, 0,
+                              nullptr, 0, nullptr, create_device_wrapper, opaque);
 }
 }  // namespace Vk
 #endif
