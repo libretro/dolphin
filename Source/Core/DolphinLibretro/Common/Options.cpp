@@ -23,6 +23,7 @@ static constexpr const char* CATEGORY_GFX_HACKS = "graphics_hacks";
 static constexpr const char* CATEGORY_GFX_GAMESPECIFIC = "graphics_gamespecific";
 static constexpr const char* CATEGORY_WIIMOTE = "wiimote";
 static constexpr const char* CATEGORY_RETROARCH_CORE = "retroarch_core";
+static constexpr const char* CATEGORY_WIIMOTE_DSU = "wiimote_dsu";
 
 // V2 Categories
 static const struct retro_core_option_v2_category option_cats[] = {
@@ -85,6 +86,11 @@ static const struct retro_core_option_v2_category option_cats[] = {
     CATEGORY_RETROARCH_CORE,
     "RetroArch Core",
     "Configure settings which are specific to the RetroArch core and do not exist in dolphin standlone."
+  },
+  {
+  CATEGORY_WIIMOTE_DSU,
+    "Wiimote (DSU)",
+    "Configure DSU client for DualShock motion data."
   },
   { NULL, NULL, NULL }
 };
@@ -1865,6 +1871,89 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "enabled"
   },
+#ifdef CIFACE_USE_DUALSHOCKUDPCLIENT
+  // ========== DSU Client ==========
+  {
+    Libretro::Options::wiimote_dsu::DSU_ENABLED,
+    "Wiimote (DSU) > Enable DSU Client",
+    "Enable DSU Client",
+    "Enable DSU client for DualShock motion data. Restart core to take effect.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_1,
+    "Wiimote (DSU) > Server IP Octet 1",
+    "Server IP Octet 1",
+    "First octet of DSU server IP. e.g. for 192.168.1.10 set this to 192.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "127", nullptr },
+      { "192", nullptr },
+      { nullptr, nullptr }
+    },
+    "127"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_2,
+    "Wiimote (DSU) > Server IP Octet 2",
+    "Server IP Octet 2",
+    "Second octet of DSU server IP. e.g. for 192.168.1.10 set this to 168.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "0", nullptr },
+      { "168", nullptr },
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_3,
+    "Wiimote (DSU) > Server IP Octet 3",
+    "Server IP Octet 3",
+    "Third octet of DSU server IP. e.g. for 192.168.1.10 set this to 1.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    { OCTET_VALUES },
+    "0"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_IP_4,
+    "Wiimote (DSU) > Server IP Octet 4",
+    "Server IP Octet 4",
+    "Fourth octet of DSU server IP. e.g. for 192.168.1.10 set this to 10.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    { OCTET_VALUES },
+    "1"
+  },
+  {
+    Libretro::Options::wiimote_dsu::DSU_PORT,
+    "Wiimote (DSU) > Server Port",
+    "Server Port",
+    "UDP port of DSU server. Default is 26760.",
+    nullptr,
+    CATEGORY_WIIMOTE_DSU,
+    {
+      { "26760", "26760 (default)" },
+      { "26761", "26761" },
+      { "26762", "26762" },
+      { "26763", "26763" },
+      { "26764", "26764" },
+      { "26765", "26765" },
+      { nullptr, nullptr }
+    },
+    "26760"
+  },
+#endif
 
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }
 };
