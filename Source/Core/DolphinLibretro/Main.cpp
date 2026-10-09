@@ -114,6 +114,9 @@ static const struct retro_subsystem_info subsystems[] = {
   },
   {nullptr, nullptr, nullptr, 0, 0}};
 cb(RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO, (void*)subsystems);
+
+  // Declared before any game loads, so a frontend can list them without one
+  Libretro::Options::SetVariables();
 }
 
 void retro_init(void)
