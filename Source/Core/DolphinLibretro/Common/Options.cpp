@@ -1500,6 +1500,31 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
 
   {
+    Libretro::Options::wiimote::DEFAULT_DEVICE,
+    "WiiMote > Device",
+    "Device",
+    "Device to use on every Wii port, in place of the one set for that port. Real WiiMote plays with Wiimotes connected to this device, for example through a DolphinBar, and scans for them continuously.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "frontend",               "Set per port" },
+      { "upright",                "WiiMote (upright)" },
+      { "sideways",               "WiiMote (sideways)" },
+      { "nunchuk",                "WiiMote + Nunchuk" },
+      { "classic",                "WiiMote + Classic Controller" },
+      { "classic_pro",            "WiiMote + Classic Controller Pro" },
+      { "motionplus",             "WiiMote + MotionPlus" },
+      { "motionplus_sideways",    "WiiMote + MotionPlus (sideways)" },
+      { "motionplus_nunchuk",     "WiiMote + MotionPlus + Nunchuk" },
+      { "motionplus_classic",     "WiiMote + MotionPlus + Classic Controller" },
+      { "motionplus_classic_pro", "WiiMote + MotionPlus + Classic Controller Pro" },
+      { "real",                   "Real WiiMote" },
+      { "gamecube",               "GameCube Controller" },
+      { nullptr, nullptr }
+    },
+    "frontend"
+  },
+  {
     Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE,
     "WiiMote Sideways > Toggle Button",
     "Sideways Toggle Button",

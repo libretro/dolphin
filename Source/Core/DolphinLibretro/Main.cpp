@@ -499,12 +499,19 @@ void retro_run(void)
     Config::SetCurrent(Config::MAIN_WII_SPEAK_MUTED,
       Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WII_SPEAK_MUTED));
 
-  if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING))
+  const bool wiimoteDeviceUpdated =
+    Libretro::Options::IsUpdated(Libretro::Options::wiimote::DEFAULT_DEVICE);
+  if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
+      wiimoteDeviceUpdated)
   {
     Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
-      Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING));
+      Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
+      Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::DEFAULT_DEVICE) == "real");
     WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
   }
+
+  if (wiimoteDeviceUpdated)
+    Libretro::Input::ResetControllers(WiimoteUpdateFlags{});
 
   if (Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
     Libretro::Input::BluetoothPassthroughBind();
