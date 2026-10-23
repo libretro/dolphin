@@ -401,7 +401,8 @@ bool retro_load_game(const struct retro_game_info* game)
 
   Config::SetBase(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
                   Libretro::GetOption<bool>(sysconf::WIIMOTE_CONTINUOUS_SCANNING,
-                                             /*def=*/false));
+                                             /*def=*/false) ||
+                  Libretro::GetOption<std::string>(wiimote::DEFAULT_DEVICE, "frontend") == "real");
   Config::SetBase(Config::MAIN_MMU,
                   Libretro::GetOption<bool>(core::MAIN_MMU, /*def=*/false));
 

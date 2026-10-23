@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <string_view>
+#include <utility>
 #include <libretro.h>
 
 #include "Common/Common.h"
@@ -108,6 +110,8 @@ static retro_input_poll_t poll_cb = nullptr;
 static retro_input_state_t input_cb = nullptr;
 static struct retro_rumble_interface rumble{};
 static unsigned input_types[8];
+// What the frontend set for each port, before the Wiimote device option replaces it.
+static unsigned frontend_types[8];
 static bool g_init_wiimotes = false;
 static bool s_sensor_init_pending = false;
 static bool sensor_enabled[NUM_CONTROLLERS_FOR_SENSORS][SENSOR_COUNT] = {};
@@ -842,7 +846,7 @@ void ResetControllers(const WiimoteUpdateFlags& f)
   }
 
   for (int port = 0; port < port_max; port++)
-    retro_set_controller_port_device(port, input_types[port]);
+    retro_set_controller_port_device(port, frontend_types[port]);
 
   UpdateInputDescriptors();
 }
@@ -1194,6 +1198,38 @@ void retro_set_input_state(retro_input_state_t cb)
   Libretro::Input::input_cb = cb;
 }
 
+/// The device the Wiimote device option puts on a Wii port, or the frontend's
+/// choice when the option leaves it to each port.
+static unsigned wii_port_device(unsigned device, bool altGCPorts)
+{
+  static const std::pair<std::string_view, unsigned> devices[] = {
+      {"upright", RETRO_DEVICE_WIIMOTE},
+      {"sideways", RETRO_DEVICE_WIIMOTE_SW},
+      {"nunchuk", RETRO_DEVICE_WIIMOTE_NC},
+      {"classic", RETRO_DEVICE_WIIMOTE_CC},
+      {"classic_pro", RETRO_DEVICE_WIIMOTE_CC_PRO},
+      {"motionplus", RETRO_DEVICE_WIIMOTE_MP},
+      {"motionplus_sideways", RETRO_DEVICE_WIIMOTE_MP_SW},
+      {"motionplus_nunchuk", RETRO_DEVICE_WIIMOTE_MP_NC},
+      {"motionplus_classic", RETRO_DEVICE_WIIMOTE_MP_CC},
+      {"motionplus_classic_pro", RETRO_DEVICE_WIIMOTE_MP_CC_PRO},
+      {"real", RETRO_DEVICE_REAL_WIIMOTE},
+      {"gamecube", RETRO_DEVICE_GC_ON_WII},
+  };
+
+  const std::string choice =
+      Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::DEFAULT_DEVICE);
+
+  for (const auto& [name, id] : devices)
+  {
+    // With the alternative GC ports, GameCube controllers have ports 5-8 to themselves.
+    if (choice == name && !(id == RETRO_DEVICE_GC_ON_WII && altGCPorts))
+      return id;
+  }
+
+  return device;
+}
+
 void retro_set_controller_port_device(unsigned port, unsigned device)
 {
   auto& system = Core::System::GetInstance();
@@ -1201,6 +1237,11 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 
   if (((!system.IsWii() || !altGCPorts) && port > 3) || port > 7)
     return;
+
+  Libretro::Input::frontend_types[port] = device;
+  if (system.IsWii() && port < 4 && device != RETRO_DEVICE_NONE &&
+      !Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
+    device = wii_port_device(device, altGCPorts);
 
   Libretro::Input::input_types[port] = device;
   auto& si = Core::System::GetInstance().GetSerialInterface();
