@@ -354,8 +354,8 @@ namespace retroarch_core {
 
   constexpr const char ENABLE_LIBRETRO_VFS[] = "dolphin_libretro_vfs_enabled";
   constexpr const char ENABLE_DEFAULT_MOUSE_BINDINGS[] = "dolphin_default_mouse_bindings_enabled";
-
-}  // namespace wiimote
+  constexpr const char ENABLE_LOG_POPUPS[] = "dolphin_log_popups_enabled";
+}  // namespace retroarch_core
 
 // ======================================================
 // Wiimote (DSU)
