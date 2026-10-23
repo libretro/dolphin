@@ -136,8 +136,12 @@ void FifoManager::ExitGpuLoop()
 }
 
 #ifdef __LIBRETRO__
+// Called by the CPU thread at the end of the frame. It can get there before the frontend
+// thread has entered RunGpuLoop(); the loop of the last frame then still counts as stopped
+// and this Stop() does nothing, so the request is kept for RunGpuLoop() to act on.
 void FifoManager::StopGpuLoop()
 {
+  m_stop_gpu_loop_requested.store(true);
   m_gpu_mainloop.Stop(Common::BlockingLoop::StopMode::NonBlock);
 }
 #endif
@@ -294,6 +298,11 @@ void FifoManager::RunGpuLoop()
 {
   m_gpu_mainloop.Run(
       [this] {
+#ifdef __LIBRETRO__
+        if (m_stop_gpu_loop_requested.load())
+          m_gpu_mainloop.Stop(Common::BlockingLoop::StopMode::NonBlock);
+#endif
+
         // Run events from the CPU thread.
         AsyncRequests::GetInstance()->PullEvents();
 
@@ -393,6 +402,9 @@ void FifoManager::RunGpuLoop()
         }
       },
       100);
+#ifdef __LIBRETRO__
+  m_stop_gpu_loop_requested.store(false);
+#endif
 }
 
 void FifoManager::FlushGpu()
