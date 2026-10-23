@@ -1969,6 +1969,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "26760"
   },
 #endif
+  {
+   Libretro::Options::retroarch_core::ENABLE_LOG_POPUPS,
+    "Interface > Logging > Popups",
+    "Popup Logging",
+    "Enable Popup log messages.",
+    nullptr,
+    CATEGORY_RETROARCH_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr,    nullptr }
+    },
+    "disabled"
+  },
 
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }
 };
