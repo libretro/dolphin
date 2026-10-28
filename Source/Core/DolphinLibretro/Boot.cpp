@@ -470,13 +470,9 @@ bool retro_load_game(const struct retro_game_info* game)
   // Graphics.Settings
   Config::SetBase(Config::GFX_WIDESCREEN_HACK,
                  Libretro::GetOption<bool>(gfx_settings::WIDESCREEN_HACK, /*def=*/false));
-  Config::SetBase(
-    Config::GFX_ASPECT_RATIO, static_cast<AspectMode>(
-      Libretro::GetOption<int>(
-        gfx_settings::ASPECT_RATIO, static_cast<int>(AspectMode::Stretch)
-      )
-    )
-  );
+  // Dolphin stretches its picture over the frame; the Aspect Ratio option
+  // sets the aspect ratio the frontend shows it at (Main.cpp, FrameAspect)
+  Config::SetBase(Config::GFX_ASPECT_RATIO, AspectMode::Stretch);
   Config::SetBase(Config::GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES,
                  Libretro::GetOption<int>(gfx_settings::TEXTURE_CACHE_ACCURACY, 128));
   Config::SetBase(Config::GFX_HIRES_TEXTURES,

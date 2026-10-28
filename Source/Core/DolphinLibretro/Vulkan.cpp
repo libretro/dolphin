@@ -93,6 +93,7 @@ struct VkSwapchainKHR_T
   std::mutex mutex;
   std::condition_variable condVar;
   int current_index;
+  VkExtent2D extent;
 };
 static VkSwapchainKHR_T chain;
 
@@ -293,6 +294,7 @@ vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInf
     swapchain_mask >>= 1;
   }
   chain.images.resize(chain.count);
+  chain.extent = pCreateInfo->imageExtent;
 
   for (uint32_t i = 0; i < chain.count; i++)
   {
@@ -411,19 +413,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue,
                     0, nullptr, vulkan->queue_index);
 #endif
   swapchain->condVar.notify_all();
-  uint32_t out_w = 0;
-  uint32_t out_h = 0;
-
-  if (g_framebuffer_manager)
-  {
-    if (AbstractTexture* efb_tex = g_framebuffer_manager->GetEFBColorTexture())
-    {
-      // VR packs both eyes side by side, so the frame is wider than the EFB by the same
-      // factor as the swapchain.
-      out_w = efb_tex->GetWidth() * Libretro::Video::GetAdjustedBaseWidth() / EFB_WIDTH;
-      out_h = efb_tex->GetHeight();
-    }
-  }
+  // The whole image Dolphin presented into, as the other backends hand over
+  // their backbuffer: the picture is letterboxed or stretched over all of it
+  uint32_t out_w = swapchain->extent.width;
+  uint32_t out_h = swapchain->extent.height;
 
   // Fallback: negotiated init dimensions (or a sane default).
   if (out_w == 0 || out_h == 0)
