@@ -110,6 +110,13 @@ public:
     ID3D11RenderTargetView* nullView = nullptr;
     DX11::D3D::context->OMSetRenderTargets(1, &nullView, nullptr);
     DX11::D3D::context->PSSetShaderResources(0, 1, &srv);
+    // None of the core's constant buffers left for the frontend's shader
+    // passes, which bind theirs only for the stages that use them: a pass
+    // read the core's 64 bytes at the vertex shader's slot 1 (D3D11)
+    ID3D11Buffer* null_buffers[3] = {};
+    DX11::D3D::context->VSSetConstantBuffers(0, 3, null_buffers);
+    DX11::D3D::context->PSSetConstantBuffers(0, 3, null_buffers);
+    DX11::D3D::context->GSSetConstantBuffers(0, 1, null_buffers);
 
     Libretro::Video::video_cb(RETRO_HW_FRAME_BUFFER_VALID,
                               m_width, m_height,
