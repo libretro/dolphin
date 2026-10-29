@@ -19,6 +19,7 @@
 class AbstractTexture;
 struct SurfaceInfo;
 enum class DolphinKey;
+enum class AspectMode : int;
 
 namespace VideoCommon
 {
@@ -74,6 +75,8 @@ public:
 
   // Returns the target aspect ratio the XFB output should be drawn with.
   float CalculateDrawAspectRatio(bool allow_stretch = true) const;
+  // The same for another aspect mode than the configured one
+  float CalculateDrawAspectRatio(AspectMode aspect_mode, bool allow_stretch) const;
 
   // Crops the target rectangle to the framebuffer dimensions, reducing the size of the source
   // rectangle if it is greater. Works even if the source and target rectangles don't have a
