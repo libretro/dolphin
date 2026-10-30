@@ -178,6 +178,34 @@ void generate_cht_from_ini(std::string fileName)
   INFO_LOG_FMT(BOOT, "Cheats: cht file created successfully at: {}", cheatFile);
 }
 
+// A region-free title runs in the fallback region, which follows the system locale and is PAL
+// when there is none, as for Kodi on LibreELEC. A Japanese title can hang on a PAL console, so a
+// region-free title runs in the region its game ID names.
+static void SetRegionFreeFallback(const BootParameters& boot_params)
+{
+  const DiscIO::Volume* volume = nullptr;
+  if (const auto* disc = std::get_if<BootParameters::Disc>(&boot_params.parameters))
+    volume = disc->volume.get();
+  else if (const auto* wad = std::get_if<DiscIO::VolumeWAD>(&boot_params.parameters))
+    volume = wad;
+
+  if (!volume || volume->GetRegion() != DiscIO::Region::Unknown)
+    return;
+
+  const std::string game_id = volume->GetGameID();
+  if (game_id.size() < 4)
+    return;
+
+  const DiscIO::Region region = DiscIO::CountryCodeToRegion(
+      game_id[3], volume->GetVolumeType(), Config::Get(Config::MAIN_FALLBACK_REGION));
+  if (region == DiscIO::Region::Unknown)
+    return;
+
+  NOTICE_LOG_FMT(BOOT, "Region-free title {}: running it as {}", game_id,
+                 DiscIO::GetName(region, false));
+  Config::SetCurrent(Config::MAIN_FALLBACK_REGION, region);
+}
+
 } // namespace Libretro
 
 bool retro_load_game(const struct retro_game_info* game)
@@ -760,6 +788,9 @@ bool retro_load_game(const struct retro_game_info* game)
       boot_params = std::make_unique<BootParameters>(BootParameters::NANDTitle{Titles::SYSTEM_MENU});
     }
   }
+
+  if (boot_params)
+    Libretro::SetRegionFreeFallback(*boot_params);
 
   if (!BootManager::BootCore(Core::System::GetInstance(), std::move(boot_params), wsi))
   {
