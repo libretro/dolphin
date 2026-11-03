@@ -969,7 +969,9 @@ void VertexManagerBase::OnDraw()
 
   // Check if this draw is scheduled to kick a command buffer.
   // The draw counters will always be sorted so a binary search is possible here.
-  if (std::ranges::binary_search(m_scheduled_command_buffer_kicks, m_draw_counter))
+  // Not std::ranges::binary_search: NDK r26's libc++ compares against the first element, so every draw
+  // between the first and last kick would flush (about 600 glFlush a frame in Super Mario Galaxy).
+  if (std::binary_search(std::begin(m_scheduled_command_buffer_kicks), std::end(m_scheduled_command_buffer_kicks), m_draw_counter))
   {
     // Kick a command buffer on the background thread.
     g_gfx->Flush();
