@@ -32,6 +32,10 @@
 #include "Core/System.h"
 #include "DiscIO/Enums.h"
 
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/Common/Globals.h"
+#endif
+
 namespace IOS::HLE
 {
 namespace
@@ -431,6 +435,12 @@ bool ESDevice::LaunchPPCTitle(u64 title_id)
                      "The emulated software will likely hang now.",
                      title_id);
     }
+#ifdef __LIBRETRO__
+    // Only the disc is booted, so leaving it (HOME menu → Wii Menu) would hang on a black screen. Ask the
+    // frontend to close the game instead, as a real Wii returns to its menu.
+    if (Libretro::environ_cb)
+      Libretro::environ_cb(RETRO_ENVIRONMENT_SHUTDOWN, nullptr);
+#endif
     return false;
   }
 
