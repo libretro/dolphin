@@ -453,7 +453,9 @@ void WiimoteDevice::ExecuteL2capCmd(u8* ptr, u32 size)
       m_host->SendACLPacket(GetBD(), reinterpret_cast<const u8*>(&data_frame), sizeof(data_frame));
 
       // Does the wii remote reply on the control or interrupt channel in this situation?
-      m_hid_source->InterruptDataOutput(data + sizeof(hid_type), data_size - sizeof(hid_type));
+      // A state restored with more remotes linked than this session has sources.
+      if (IsSourceValid())
+        m_hid_source->InterruptDataOutput(data + sizeof(hid_type), data_size - sizeof(hid_type));
     }
     else
     {
@@ -466,7 +468,11 @@ void WiimoteDevice::ExecuteL2capCmd(u8* ptr, u32 size)
   {
     const u8 hid_type = data[0];
     if (hid_type == ((WiimoteCommon::HID_TYPE_DATA << 4) | WiimoteCommon::HID_PARAM_OUTPUT))
-      m_hid_source->InterruptDataOutput(data + sizeof(hid_type), data_size - sizeof(hid_type));
+    {
+      // A state restored with more remotes linked than this session has sources.
+      if (IsSourceValid())
+        m_hid_source->InterruptDataOutput(data + sizeof(hid_type), data_size - sizeof(hid_type));
+    }
     else
       ERROR_LOG_FMT(IOS_WIIMOTE, "Unknown HID-type ({:#x}) on L2CAP_PSM_HID_INTR", hid_type);
   }
