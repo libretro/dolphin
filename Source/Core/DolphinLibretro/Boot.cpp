@@ -679,6 +679,14 @@ bool retro_load_game(const struct retro_game_info* game)
   Libretro::FrameTiming::Init();
   Libretro::Audio::Init();
   Libretro::Video::Init();
+  // The hardware renderer was asked for and no hardware context was granted (e.g. no GLES 3): fail the load so the
+  // frontend reports it, rather than run on the null backend behind a black screen.
+  if (Libretro::Options::GetCached<std::string>(Libretro::Options::gfx_settings::RENDERER) == "Hardware" &&
+      Libretro::Video::hw_render.context_type == RETRO_HW_CONTEXT_NONE)
+  {
+    ERROR_LOG_FMT(VIDEO, "No hardware render context was granted; refusing to load");
+    return false;
+  }
   WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
   VideoBackendBase::PopulateBackendInfo(wsi);
   NOTICE_LOG_FMT(VIDEO, "Using GFX backend: {}", Config::Get(Config::MAIN_GFX_BACKEND));
