@@ -115,6 +115,7 @@ static unsigned frontend_types[8];
 static bool g_init_wiimotes = false;
 static bool s_sensor_init_pending = false;
 static bool sensor_enabled[NUM_CONTROLLERS_FOR_SENSORS][SENSOR_COUNT] = {};
+static bool s_sensor_registered[NUM_CONTROLLERS_FOR_SENSORS] = {};
 static int port_max;
 double g_accel_pos[NUM_CONTROLLERS_FOR_SENSORS][3] = {}; // x, y, z
 double g_accel_neg[NUM_CONTROLLERS_FOR_SENSORS][3] = {}; // x, y, z
@@ -695,11 +696,30 @@ void InitSensors()
         auto sensor = std::make_shared<SensorDevice>(i);
         sensor->RegisterAll();
         g_controller_interface.AddDevice(sensor);
+        s_sensor_registered[i] = true;
       }
     }
   }
 
   ResetControllers(WiimoteUpdateFlags{});
+}
+
+// Asks the frontend again whether this port has sensors before its device is wired, so a frontend
+// turns motion on or off by resending the port's device (InitSensors asked only once, at the first retro_run). The Sensor
+// device is registered the first time a port gets one and kept; sensor_enabled decides whether it is bound.
+static void RefreshSensors(unsigned port)
+{
+  if (port >= NUM_CONTROLLERS_FOR_SENSORS || !sensor_interface.set_sensor_state)
+    return;
+  sensor_enabled[port][SENSOR_ACCELEROMETER] = sensor_interface.set_sensor_state(port, RETRO_SENSOR_ACCELEROMETER_ENABLE, 60);
+  sensor_enabled[port][SENSOR_GYRO] = sensor_interface.set_sensor_state(port, RETRO_SENSOR_GYROSCOPE_ENABLE, 60);
+  if ((sensor_enabled[port][SENSOR_ACCELEROMETER] || sensor_enabled[port][SENSOR_GYRO]) && !s_sensor_registered[port])
+  {
+    auto sensor = std::make_shared<SensorDevice>(port);
+    sensor->RegisterAll();
+    g_controller_interface.AddDevice(sensor);
+    s_sensor_registered[port] = true;
+  }
 }
 
 void Shutdown()
@@ -1551,6 +1571,9 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     return;
   }
 
+  if (!Libretro::Input::s_sensor_init_pending && !Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
+    Libretro::Input::RefreshSensors(port);
+
   bool altGCPorts = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII);
   if (!altGCPorts) // Disconnect GC controller to avoid conflict with Wii device
   {
@@ -1786,6 +1809,12 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
             wmAccel->SetControlExpression(5, "`" + devSensor + ":AccelY+`");  // Backward
           }
         }
+        else if (auto* wmAccelOff = static_cast<ControllerEmu::IMUAccelerometer*>(
+                     wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer)))
+        {
+          for (int i = 0; i < 6; i++)
+            wmAccelOff->SetControlExpression(i, "");
+        }
 
         // A sibling, not a child: nested, gyro-without-accelerometer bound neither.
         if (Libretro::Input::sensor_enabled[port][SENSOR_GYRO])
@@ -1806,9 +1835,25 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
             wmGyro->SetControlExpression(5, "`" + devSensor + ":GyroZ-`");  // Yaw Right
           }
         }
+        else if (auto* wmGyroOff = static_cast<ControllerEmu::IMUGyroscope*>(
+                     wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope)))
+        {
+          for (int i = 0; i < 6; i++)
+            wmGyroOff->SetControlExpression(i, "");
+        }
       }
       else
       {
+        // Clear any IMU binding left from a sensor run, or Dolphin reads the unbound accelerometer as free fall.
+        auto* wmAccelOff = static_cast<ControllerEmu::IMUAccelerometer*>(
+            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer));
+        auto* wmGyroOff = static_cast<ControllerEmu::IMUGyroscope*>(
+            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope));
+        for (int i = 0; i < 6; i++)
+        {
+          if (wmAccelOff) wmAccelOff->SetControlExpression(i, "");
+          if (wmGyroOff) wmGyroOff->SetControlExpression(i, "");
+        }
         wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y0-`");  // Forward
         wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y0+`");  // Backward
         wmTilt->SetControlExpression(2, "`" + devAnalog + ":X0-`");  // Left
