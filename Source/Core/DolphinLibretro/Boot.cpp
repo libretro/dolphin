@@ -370,6 +370,10 @@ bool retro_load_game(const struct retro_game_info* game)
   Config::SetBase(Config::MAIN_CPU_THREAD,
     Libretro::GetOption<bool>(core::MAIN_CPU_THREAD, /*def=*/true));
 
+  // Dual core's GPU thread kept in step with the CPU thread (Dolphin's "Synchronize GPU Thread").
+  Config::SetBase(Config::MAIN_SYNC_GPU,
+    Libretro::GetOption<bool>(core::MAIN_SYNC_GPU, /*def=*/false));
+
   Config::SetBase(Config::MAIN_LOAD_GAME_INTO_MEMORY,
     Libretro::GetOption<bool>(core::MAIN_LOAD_GAME_INTO_MEMORY, /*def=*/false));
 
