@@ -463,57 +463,57 @@ void retro_run(void)
   }
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE))
-    g_Config.bSkipEFBCopyToRam = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE, true);
+    Config::SetBase(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE, true));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_ACCESS_ENABLE))
-    g_Config.bEFBAccessEnable = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_ACCESS_ENABLE, false);
+    Config::SetBase(Config::GFX_HACK_EFB_ACCESS_ENABLE, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_ACCESS_ENABLE, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_ACCESS_DEFER_INVALIDATION))
-    g_Config.bEFBAccessDeferInvalidation = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_ACCESS_DEFER_INVALIDATION, false);
+    Config::SetBase(Config::GFX_HACK_EFB_DEFER_INVALIDATION, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_ACCESS_DEFER_INVALIDATION, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_ACCESS_TILE_SIZE))
-    g_Config.iEFBAccessTileSize = Libretro::Options::GetCached<int>(Libretro::Options::gfx_hacks::EFB_ACCESS_TILE_SIZE, 64);
+    Config::SetBase(Config::GFX_HACK_EFB_ACCESS_TILE_SIZE, Libretro::Options::GetCached<int>(Libretro::Options::gfx_hacks::EFB_ACCESS_TILE_SIZE, 64));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::BBOX_ENABLED))
-    g_Config.bBBoxEnable = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::BBOX_ENABLED, false);
+    Config::SetBase(Config::GFX_HACK_BBOX_ENABLE, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::BBOX_ENABLED, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::XFB_TO_TEXTURE_ENABLE))
-    g_Config.bSkipXFBCopyToRam = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::XFB_TO_TEXTURE_ENABLE, true);
+    Config::SetBase(Config::GFX_HACK_SKIP_XFB_COPY_TO_RAM, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::XFB_TO_TEXTURE_ENABLE, true));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_TO_VRAM))
-    g_Config.bDisableCopyToVRAM = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_VRAM, false);
+    Config::SetBase(Config::GFX_HACK_DISABLE_COPY_TO_VRAM, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_VRAM, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::DEFER_EFB_COPIES))
-    g_Config.bDeferEFBCopies = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::DEFER_EFB_COPIES, true);
+    Config::SetBase(Config::GFX_HACK_DEFER_EFB_COPIES, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::DEFER_EFB_COPIES, true));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::IMMEDIATE_XFB))
-    g_Config.bImmediateXFB = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::IMMEDIATE_XFB, false);
+    Config::SetBase(Config::GFX_HACK_IMMEDIATE_XFB, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::IMMEDIATE_XFB, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::SKIP_DUPE_FRAMES))
-    g_Config.bSkipPresentingDuplicateXFBs = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::SKIP_DUPE_FRAMES, true);
+    Config::SetBase(Config::GFX_HACK_SKIP_DUPLICATE_XFBS, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::SKIP_DUPE_FRAMES, true));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_SCALED_COPY))
-    g_Config.bCopyEFBScaled = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_SCALED_COPY, true);
+    Config::SetBase(Config::GFX_HACK_COPY_EFB_SCALED, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_SCALED_COPY, true));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_EMULATE_FORMAT_CHANGES))
-    g_Config.bEFBEmulateFormatChanges = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_EMULATE_FORMAT_CHANGES, false);
+    Config::SetBase(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_EMULATE_FORMAT_CHANGES, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::VERTEX_ROUNDING))
-    g_Config.bVertexRounding = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::VERTEX_ROUNDING, false);
+    Config::SetBase(Config::GFX_HACK_VERTEX_ROUNDING, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::VERTEX_ROUNDING, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::VI_SKIP))
-    g_Config.bVISkip = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::VI_SKIP, false);
+    Config::SetBase(Config::GFX_HACK_VI_SKIP, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::VI_SKIP, false));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::FAST_TEXTURE_SAMPLING))
-    g_Config.bFastTextureSampling = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::FAST_TEXTURE_SAMPLING, true);
+    Config::SetBase(Config::GFX_HACK_FAST_TEXTURE_SAMPLING, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::FAST_TEXTURE_SAMPLING, true));
 
 #ifdef __APPLE__
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::NO_MIPMAPPING))
-    g_Config.bNoMipmapping = Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::NO_MIPMAPPING, false);
+    Config::SetBase(Config::GFX_HACK_NO_MIPMAPPING, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::NO_MIPMAPPING, false));
 #endif
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::TEXTURE_CACHE_ACCURACY))
-    g_Config.iSafeTextureCache_ColorSamples = Libretro::Options::GetCached<int>(Libretro::Options::gfx_settings::TEXTURE_CACHE_ACCURACY, 128);
+    Config::SetBase(Config::GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES, Libretro::Options::GetCached<int>(Libretro::Options::gfx_settings::TEXTURE_CACHE_ACCURACY, 128));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WII_SPEAK_MUTED))
     Config::SetCurrent(Config::MAIN_WII_SPEAK_MUTED,
