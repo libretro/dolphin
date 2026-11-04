@@ -964,7 +964,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "2", "Async (UberShaders)" }, // ShaderCompilationMode::AsynchronousUberShaders
       { nullptr, nullptr }
     },
-    STR(ShaderCompilationMode::Synchronous)
+    "0"
   },
   {
     Libretro::Options::gfx_settings::WAIT_FOR_SHADERS,
@@ -1178,7 +1178,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "6", "Area Sampling" },
       { nullptr, nullptr }
     },
-    "default"
+    "0"
   },
   {
     Libretro::Options::gfx_enhancements::FORCE_TRUE_COLOR,
