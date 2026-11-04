@@ -176,6 +176,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "enabled"
   },
   {
+    Libretro::Options::core::MAIN_SYNC_GPU,
+    "Core > Synchronize GPU Thread",
+    "Synchronize GPU Thread",
+    "Keeps the dual-core GPU thread in step with the CPU thread, which stops FIFO desyncs at some speed cost. Requires core RESTART.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", "Disabled" },
+      { "enabled",  "Enabled" },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
     Libretro::Options::core::MAIN_LOAD_GAME_INTO_MEMORY,
     "Core > Load Whole Game Into Memory",
     "Load Whole Game Into Memory",
