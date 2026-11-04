@@ -462,9 +462,6 @@ void retro_run(void)
     Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
   }
 
-  // Graphics hacks go to the base layer, as Boot.cpp sets them: a game's INI (the GlobalGame and LocalGame layers)
-  // keeps winning, and the config callback refreshes g_Config. Written straight into g_Config, any option update (which
-  // re-reads every option) replaced the game's fixes until a restart.
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE))
     Config::SetBase(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, Libretro::Options::GetCached<bool>(Libretro::Options::gfx_hacks::EFB_TO_TEXTURE, true));
 
