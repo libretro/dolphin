@@ -950,7 +950,6 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "2", "Async (UberShaders)" }, // ShaderCompilationMode::AsynchronousUberShaders
       { nullptr, nullptr }
     },
-    // STR() stringified the enumerator name; the default must be one of the values ("0" = Synchronous).
     "0"
   },
   {
@@ -1165,7 +1164,6 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "6", "Area Sampling" },
       { nullptr, nullptr }
     },
-    // "default" was not one of the values; "0" is OutputResamplingMode::Default.
     "0"
   },
   {
