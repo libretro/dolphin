@@ -334,9 +334,13 @@ bool retro_load_game(const struct retro_game_info* game)
     // Log the message instead of showing a popup
     WARN_LOG_FMT(COMMON, "Suppressed popup: {} - {}", caption, text);
 
-    if (Libretro::GetOption<bool>(retroarch_core::ENABLE_LOG_POPUPS,
-                            /*def=*/false))
+    const bool bluetooth_error =
+        text && std::strstr(text, "Could not find any usable Bluetooth USB adapter") != nullptr;
+
+    if (bluetooth_error ||
+        Libretro::GetOption<bool>(retroarch_core::ENABLE_LOG_POPUPS, /*def=*/false))
       Libretro::Log::LogFrontEnd(style, caption, text, 2000);
+
     return true; // Always "continue"
   });
 

@@ -2012,7 +2012,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
    Libretro::Options::retroarch_core::ENABLE_LOG_POPUPS,
     "Interface > Logging > Popups",
     "Popup Logging",
-    "Enable Popup log messages.",
+    "Enable Popup log messages. Some messages will still appear despite setting this to false, such as when dolphin cannot find a suitable Bluetooth USB adapter (if passthrough enabled), as this leads to a failed boot.",
     nullptr,
     CATEGORY_RETROARCH_CORE,
     {
