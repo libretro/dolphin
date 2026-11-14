@@ -92,7 +92,11 @@ bool DirectIOFile::Open(const std::string& path, AccessMode access_mode, OpenMod
     return Libretro::VFile::Open(path, access_mode, open_mode,
                                 m_vfs_handle, m_mode, m_hints, m_current_offset);
   }
-#endif
+#if defined(__SWITCH2__)
+  ERROR_LOG_FMT(COMMON, "Switch 2 requires libretro VFS to open {}", path);
+  return false;
+#endif // __SWITCH2__
+#endif // __LIBRETRO__
 
 #if defined(_WIN32)
   DWORD desired_access = GENERIC_READ | GENERIC_WRITE;
@@ -254,7 +258,10 @@ bool DirectIOFile::OffsetRead(u64 offset, u8* out_ptr, u64 size)
     int64_t bytes_read = Libretro::VFile::ReadBytes(m_vfs_handle, out_ptr, size);
     return bytes_read == static_cast<int64_t>(size);
   }
-#endif
+#ifdef __SWITCH2__
+  return false;
+#endif // __SWITCH2__
+#endif // __LIBRETRO__
 
 #if defined(_WIN32)
   return OverlappedTransfer<ReadFile>(m_handle, offset, out_ptr, size);
@@ -274,7 +281,10 @@ bool DirectIOFile::OffsetWrite(u64 offset, const u8* in_ptr, u64 size)
     int64_t bytes_written = Libretro::VFile::WriteBytes(m_vfs_handle, in_ptr, size);
     return bytes_written == static_cast<int64_t>(size);
   }
-#endif
+#ifdef __SWITCH2__
+  return false;
+#endif // __SWITCH2__
+#endif // __LIBRETRO__
 
 #if defined(_WIN32)
   return OverlappedTransfer<WriteFile>(m_handle, offset, in_ptr, size);

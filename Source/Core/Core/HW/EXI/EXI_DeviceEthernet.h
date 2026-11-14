@@ -412,7 +412,8 @@ private:
     bool m_bba_link_up = false;
     bool m_bba_failure_notified = false;
 #if defined(WIN32) || defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) ||          \
-    defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__)
+    defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__) || \
+    (defined(__LIBRETRO__) && defined(__SWITCH2__))
     sf::UdpSocket m_sf_socket;
     sf::IpAddress m_sf_recipient_ip = sf::IpAddress::Any;
     char m_in_frame[9004]{};
@@ -456,7 +457,8 @@ private:
     std::map<u32, Common::MACAddress> m_arp_table;
     sf::TcpListener m_upnp_httpd;
 #if defined(WIN32) || defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) ||          \
-    defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__)
+    defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__) || \
+    (defined(__LIBRETRO__) && defined(__SWITCH2__))
     NetworkRef m_network_ref;
     std::thread m_read_thread;
     Common::Flag m_read_enabled;

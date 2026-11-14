@@ -42,9 +42,13 @@
 
 #else
 #include <arpa/inet.h>
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+#include <switch.h>
+#else
 #include <ifaddrs.h>
-#include <netinet/in.h>
 #include <resolv.h>
+#endif
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
@@ -415,6 +419,25 @@ static std::optional<DefaultInterface> GetSystemDefaultInterface()
     routing_table = {{0, 0, 0, gateway}};
   if (addr || netmask || gateway)
     return DefaultInterface{addr, netmask, gateway, routing_table};
+#elif defined(__LIBRETRO__) && defined(__SWITCH2__)
+  u32 addr, netmask, gateway;
+
+  if (R_FAILED(nifmInitialize(NifmServiceType_User)))
+    return std::nullopt;
+
+  const Result result = nifmGetCurrentIpConfigInfo(&addr, &netmask, &gateway, nullptr, nullptr);
+  nifmExit();
+
+  if (R_FAILED(result))
+    return std::nullopt;
+
+  const in_addr ip{addr}, mask{netmask}, route{gateway};
+  const in_addr broadcast{addr | ~netmask};
+
+  if (routing_table.empty())
+    routing_table = {{0, {}, {}, route}};
+
+  return DefaultInterface{ip, mask, broadcast, routing_table};
 #else
   // Assume that the address that is used to access the Internet corresponds
   // to the default interface.

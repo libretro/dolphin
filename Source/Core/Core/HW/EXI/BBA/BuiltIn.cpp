@@ -12,6 +12,9 @@
 #include <ws2tcpip.h>
 #include <ws2ipdef.h>
 #else
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+#include <arpa/inet.h>
+#endif
 #include <sys/select.h>
 #include <sys/socket.h>
 #endif

@@ -375,6 +375,10 @@ bool RenameSync(const std::string& srcFilename, const std::string& destFilename)
       ERROR_LOG_FMT(COMMON, "{} sync failed on {}: {}", __func__, srcFilename, err);
     close(fd);
   }
+#elif defined(__LIBRETRO__) && defined(__SWITCH2__)
+  FSyncPath(srcFilename.c_str());
+  FSyncPath(std::filesystem::path(srcFilename).parent_path().string().c_str());
+  FSyncPath(std::filesystem::path(destFilename).parent_path().string().c_str());
 #else
   char* path = strdup(srcFilename.c_str());
   FSyncPath(path);

@@ -28,6 +28,10 @@ namespace Vulkan
 void VideoBackend::InitBackendInfo(const WindowSystemInfo& wsi)
 {
   VulkanContext::PopulateBackendInfo(&g_backend_info);
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  if (!vkGetInstanceProcAddr)
+    return;
+#endif
 
   if (LoadVulkanLibrary())
   {

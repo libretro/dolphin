@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Core/NetPlayServer.h"
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+#include "SFML/Network/IpAddress.hpp"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -75,7 +78,7 @@
 #ifdef __HAIKU__
 #define _BSD_SOURCE
 #include <bsd/ifaddrs.h>
-#elif !defined ANDROID
+#elif !defined(ANDROID) && !(defined(__LIBRETRO__) && defined(__SWITCH2__))
 #include <ifaddrs.h>
 #endif
 #include <arpa/inet.h>
@@ -2385,6 +2388,10 @@ std::vector<std::pair<std::string, std::string>> NetPlayServer::GetInterfaceList
   {
     WARN_LOG_FMT(NETPLAY, "GetAdaptersAddresses: {}", adapters_result);
   }
+#elif defined(__LIBRETRO__) && defined(__SWITCH2__)
+  const auto ip = sf::IpAddress::getLocalAddress();
+  if (ip)
+    result.emplace_back("Switch 2", ip->toString());
 #elif defined(ANDROID)
 // Android has no getifaddrs for some stupid reason.  If this
 // functionality ends up actually being used on Android, fix this.

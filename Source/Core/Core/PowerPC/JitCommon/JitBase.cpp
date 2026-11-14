@@ -161,8 +161,12 @@ bool JitBase::WantsPageTableMappings() const
 
 void JitBase::InitFastmemArena()
 {
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  jo.fastmem_arena = false;
+#else
   auto& memory = m_system.GetMemory();
   jo.fastmem_arena = Config::Get(Config::MAIN_FASTMEM_ARENA) && memory.InitFastmemArena();
+#endif
 }
 
 void JitBase::InitBLROptimization()
@@ -197,7 +201,11 @@ void JitBase::ProtectStack()
     return;
   }
 
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  constexpr long page_size = 0x1000;
+#else
   const long page_size = sysconf(_SC_PAGESIZE);
+#endif
   if (page_size <= 0)
   {
     PanicAlertFmt("Failed to get page size");

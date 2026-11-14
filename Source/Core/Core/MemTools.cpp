@@ -257,7 +257,7 @@ bool IsExceptionHandlerSupported()
   return true;
 }
 
-#elif defined(_POSIX_VERSION) && !defined(_M_GENERIC) && !(defined(TARGET_OS_TV) && TARGET_OS_TV)
+#elif defined(_POSIX_VERSION) && !defined(_M_GENERIC) && !(defined(__LIBRETRO__) && defined(__SWITCH2__)) && !(defined(TARGET_OS_TV) && TARGET_OS_TV)
 
 static struct sigaction old_sa_segv;
 #if defined(__APPLE__)

@@ -36,7 +36,7 @@
 #include "VideoCommon/OnScreenDisplay.h"
 
 #if defined(__linux__) or defined(__APPLE__) or defined(__FreeBSD__) or defined(__NetBSD__) or     \
-    defined(__OpenBSD__) or defined(__HAIKU__)
+    defined(__OpenBSD__) or defined(__HAIKU__) or (defined(__LIBRETRO__) && defined(__SWITCH2__))
 
 #include <unistd.h>
 

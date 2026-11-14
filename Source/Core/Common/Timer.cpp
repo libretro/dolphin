@@ -210,7 +210,7 @@ auto SteadyAwakeClock::now() -> time_point
   // Note that Linux's CLOCK_MONOTONIC "does not count time that the system is suspended".
   // This is in contrast to the behavior on macOS and FreeBSD.
   static constexpr auto clock_id =
-#if defined(__linux__)
+#if defined(__linux__) || (defined(__LIBRETRO__) && defined(__SWITCH2__))
       CLOCK_MONOTONIC;
 #elif defined(__APPLE__)
       CLOCK_UPTIME_RAW;

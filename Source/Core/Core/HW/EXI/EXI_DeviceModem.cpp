@@ -3,6 +3,10 @@
 
 #include "Core/HW/EXI/EXI_DeviceModem.h"
 
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+#include <arpa/inet.h>
+#endif
+
 #include <algorithm>
 #include <cstring>
 #include <memory>
