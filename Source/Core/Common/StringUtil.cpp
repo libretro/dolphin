@@ -140,6 +140,20 @@ std::string StringFromFormat(const char* format, ...)
 
 std::string StringFromFormatV(const char* format, va_list args)
 {
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  va_list count_args;
+  va_copy(count_args, args);
+  const int length = std::vsnprintf(nullptr, 0, format, count_args);
+  va_end(count_args);
+
+  if (length < 0)
+    return {};
+
+  std::string result(length, '\0');
+  std::vsnprintf(result.data(), result.size() + 1, format, args);
+
+  return result;
+#else
   char* buf = nullptr;
 #ifdef _WIN32
   int required = _vscprintf(format, args);
@@ -166,6 +180,7 @@ std::string StringFromFormatV(const char* format, va_list args)
   free(buf);
 #endif
   return temp;
+#endif
 }
 
 // For Debugging. Read out an u8 array.

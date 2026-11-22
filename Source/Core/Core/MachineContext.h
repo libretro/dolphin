@@ -11,6 +11,18 @@
 // generic build.
 struct FakeGenericContext;
 typedef FakeGenericContext SContext;
+#elif (defined(__LIBRETRO__) && defined(__SWITCH2__))
+#pragma push_macro("BIT")
+#include <switch/arm/thread_context.h>
+#pragma pop_macro("BIT")
+struct SContext : ThreadContext
+{
+  u64& Gpr(int index) { return index == 29 ? fp : index == 30 ? lr : cpu_gprs[index].x; }
+};
+#define CTX_REG(index) Gpr(index)
+#define CTX_LR lr
+#define CTX_SP sp
+#define CTX_PC pc.x
 #elif defined(_WIN32)
 #include <windows.h>
 typedef CONTEXT SContext;

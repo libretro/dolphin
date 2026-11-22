@@ -786,7 +786,7 @@ elseif(APPLE)
     HW/EXI/BBA/TAP_Apple.cpp
   )
   target_link_libraries(core PUBLIC ${IOB_LIBRARY})
-elseif(UNIX)
+elseif(UNIX OR (LIBRETRO AND SWITCH2))
   target_sources(core PRIVATE
     HW/EXI/BBA/TAP_Unix.cpp
   )

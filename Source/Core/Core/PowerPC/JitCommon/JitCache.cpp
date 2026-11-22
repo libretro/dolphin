@@ -57,7 +57,7 @@ void JitBaseBlockCache::Init()
   Common::JitRegister::Init(Config::Get(Config::MAIN_PERF_MAP_DIR));
 
   m_entry_points_ptr = nullptr;
-#if defined(_ARCH_64) && !defined(IPHONEOS)
+#if defined(_ARCH_64) && !defined(IPHONEOS) && !(defined(__LIBRETRO__) && defined(__SWITCH2__))
   if (Config::Get(Config::MAIN_LARGE_ENTRY_POINTS_MAP))
     m_entry_points_ptr = static_cast<u8**>(m_entry_points_arena.Create(FAST_BLOCK_MAP_SIZE));
 #endif

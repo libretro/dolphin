@@ -24,6 +24,14 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 project(dolphin-emu)
 
+if(LIBRETRO AND SWITCH2)
+  set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+  set(CMAKE_C_STANDARD_LIBRARIES "-lgcc")
+  set(CMAKE_CXX_STANDARD_LIBRARIES "-lgcc")
+  add_compile_options(-mtls-dialect=trad -ftls-model=global-dynamic
+    $<$<COMPILE_LANGUAGE:CXX>:-fuse-cxa-atexit>)
+endif()
+
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMake)
 
 # Support functions
@@ -121,6 +129,7 @@ option(ENABLE_AUTOUPDATE "Enables support for automatic updates" ON)
 option(USE_RETRO_ACHIEVEMENTS "Enables integration with retroachievements.org" ON)
 option(ENABLE_CCACHE "Enables CCache compiler cache" OFF)
 option(LIBRETRO "Build as a libretro library" OFF)
+option(SWITCH2 "Build for the libretro core for the Switch platform" OFF)
 
 # Maintainers: if you consider blanket disabling this for your users, please
 # consider the following points:
@@ -138,6 +147,10 @@ option(FASTLOG "Enable all logs" OFF)
 if (MSVC)
    set(CMAKE_CXX_FLAGS_DEBUG   "/MTd")
    set(CMAKE_CXX_FLAGS_RELEASE "/MT")
+endif()
+
+if(SWITCH2)
+  add_compile_definitions(__SWITCH2__=1)
 endif()
 
 # TODO: Add DSPSpy
@@ -532,6 +545,13 @@ if(LIBRETRO)
     endif()
     set(USE_SYSTEM_CURL OFF CACHE BOOL "" FORCE)
   endif()
+  if(SWITCH2)
+    set(ENABLE_EGL OFF CACHE BOOL "" FORCE)
+    set(ENABLE_HWDB OFF CACHE BOOL "" FORCE)
+    set(ENABLE_EVDEV OFF CACHE BOOL "" FORCE)
+    set(ENABLE_X11 OFF CACHE BOOL "" FORCE)
+    set(USE_MGBA OFF CACHE BOOL "" FORCE)
+  endif()
 endif()
 
 if(ENABLE_HEADLESS)
@@ -780,7 +800,7 @@ if(ENABLE_CUBEB)
   add_definitions(-DHAVE_CUBEB)
 endif()
 
-if(NOT ANDROID AND NOT IOS AND NOT WEBOS)
+if(NOT ANDROID AND NOT IOS AND NOT WEBOS AND NOT SWITCH2)
   dolphin_find_optional_system_library(LibUSB Externals/libusb)
   add_definitions(-D__LIBUSB__)
 endif()
@@ -801,7 +821,7 @@ dolphin_find_optional_system_library(MBEDTLS Externals/mbedtls 2.28)
 
 dolphin_find_optional_system_library(CURL Externals/curl)
 
-if(NOT ANDROID AND NOT IOS)
+if(NOT ANDROID AND NOT IOS AND NOT SWITCH2)
   dolphin_find_optional_system_library(HIDAPI Externals/hidapi)
 endif()
 

@@ -15,6 +15,9 @@
 namespace Common
 {
 void* AllocateExecutableMemory(size_t size);
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+void PublishExecutableMemory(void* start, size_t size);
+#endif
 
 #ifdef IPHONEOS
 // Which of the executable-memory strategies is in use. Dual-mapped modes write
@@ -29,7 +32,7 @@ enum class JitType
 void SetJitType(JitType type);
 #endif
 
-#if defined(IPHONEOS) || (defined(__APPLE__) && defined(__aarch64__) && !TARGET_OS_IPHONE)
+#if defined(__SWITCH2__) || defined(IPHONEOS) || (defined(__APPLE__) && defined(__aarch64__) && !TARGET_OS_IPHONE)
 ptrdiff_t AllocateWritableRegionAndGetDiff(void* rx_ptr, size_t size);
 void FreeWritableRegion(void* rx_ptr, size_t size, ptrdiff_t diff);
 void FreeExecutableMemory(void* ptr, size_t size);

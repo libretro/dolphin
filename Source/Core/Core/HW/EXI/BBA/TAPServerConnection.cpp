@@ -13,7 +13,11 @@
 #include <netinet/in.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#if !(defined(__LIBRETRO__) && defined(__SWITCH2__))
 #include <sys/un.h>
+#else
+#include <arpa/inet.h>
+#endif
 #include <unistd.h>
 #endif
 
@@ -83,7 +87,7 @@ static int ConnectToDestination(const std::string& destination)
     }
     sin->sin_port = htons(dest_port);
     ss_size = sizeof(*sin);
-#ifndef _WIN32
+#if !defined(_WIN32) && !(defined(__LIBRETRO__) && defined(__SWITCH2__))
   }
   else
   {
@@ -101,7 +105,11 @@ static int ConnectToDestination(const std::string& destination)
   }
   else
   {
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+    ERROR_LOG_FMT(SP1, "UNIX sockets are not supported on Switch 2\n");
+#else
     ERROR_LOG_FMT(SP1, "UNIX sockets are not supported on Windows\n");
+#endif
     return -1;
 #endif
   }

@@ -11,6 +11,9 @@
 #ifndef _WIN32
 #include <cstring>
 #include <netinet/in.h>
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+#include <arpa/inet.h>
+#endif
 #include <sys/socket.h>
 #else
 #include <winsock2.h>

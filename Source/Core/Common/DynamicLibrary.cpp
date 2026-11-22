@@ -9,7 +9,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#else
+#elif !(defined(__LIBRETRO__) && defined(__SWITCH2__))
 #include <dlfcn.h>
 #endif
 
@@ -82,7 +82,10 @@ bool DynamicLibrary::Open(const char* filename)
 #ifdef _WIN32
   m_handle = reinterpret_cast<void*>(LoadLibraryA(filename));
 #else
+
+#if !(defined(__LIBRETRO__) && defined(__SWITCH2__))
   m_handle = dlopen(filename, RTLD_NOW);
+#endif
 #endif
   return m_handle != nullptr;
 }
@@ -95,7 +98,10 @@ void DynamicLibrary::Close()
 #ifdef _WIN32
   FreeLibrary(static_cast<HMODULE>(m_handle));
 #else
+
+#if !(defined(__LIBRETRO__) && defined(__SWITCH2__))
   dlclose(m_handle);
+#endif
 #endif
   m_handle = nullptr;
 }
@@ -105,7 +111,11 @@ void* DynamicLibrary::GetSymbolAddress(const char* name) const
 #ifdef _WIN32
   return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(m_handle), name));
 #else
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  return nullptr;
+#else
   return reinterpret_cast<void*>(dlsym(m_handle, name));
+#endif
 #endif
 }
 }  // namespace Common

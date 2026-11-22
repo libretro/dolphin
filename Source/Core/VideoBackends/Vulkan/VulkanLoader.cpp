@@ -94,6 +94,21 @@ static bool OpenVulkanLibrary(bool force_system_library)
 
 bool LoadVulkanLibrary(bool force_system_library)
 {
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  // The libretro negotiation callback supplies the frontend's Vulkan resolver.
+  if (!vkGetInstanceProcAddr)
+    return false;
+
+#define VULKAN_MODULE_ENTRY_POINT(name, required) \
+  if (!name) \
+    name = reinterpret_cast<PFN_##name>(vkGetInstanceProcAddr(VK_NULL_HANDLE, #name)); \
+  if (required && !name) \
+    return false;
+#include "VideoBackends/Vulkan/VulkanEntryPoints.inl"
+#undef VULKAN_MODULE_ENTRY_POINT
+
+  return true;
+#else
   if (!s_vulkan_module.IsOpen() && !OpenVulkanLibrary(force_system_library))
     return false;
 
@@ -109,6 +124,7 @@ bool LoadVulkanLibrary(bool force_system_library)
 #undef VULKAN_MODULE_ENTRY_POINT
 
   return true;
+#endif
 }
 
 void UnloadVulkanLibrary()

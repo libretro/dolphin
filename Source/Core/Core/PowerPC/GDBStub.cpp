@@ -18,7 +18,11 @@ typedef SSIZE_T ssize_t;
 #include <netinet/in.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+#include <arpa/inet.h>
+#else
 #include <sys/un.h>
+#endif
 #include <unistd.h>
 #endif
 
@@ -1050,6 +1054,9 @@ static void InitGeneric(int domain, const sockaddr* server_addr, socklen_t serve
 #ifndef _WIN32
 void InitLocal(const char* socket)
 {
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  ERROR_LOG_FMT(GDB_STUB, "Local sockets are unavailable on Switch 2; use the TCP debugger port");
+#else
   unlink(socket);
 
   sockaddr_un addr = {};
@@ -1057,6 +1064,7 @@ void InitLocal(const char* socket)
   strcpy(addr.sun_path, socket);
 
   InitGeneric(PF_LOCAL, (const sockaddr*)&addr, sizeof(addr), nullptr, nullptr);
+#endif
 }
 #endif
 

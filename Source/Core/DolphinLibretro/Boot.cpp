@@ -228,6 +228,7 @@ bool retro_load_game(const struct retro_game_info* game)
    *  said behavior actively if those sorting options are enabled,
    *  we should seperate them accordingly.
    */
+
   if (Libretro::GBPlayer_active)
   {
     std::filesystem::path gba_content_dir = std::filesystem::path("");
@@ -310,6 +311,8 @@ bool retro_load_game(const struct retro_game_info* game)
   UICommon::Init();
   Libretro::Log::Init();
 
+
+#ifdef HAS_LIBMGBA
   if (Libretro::GBPlayer_active)
   {
     Config::SetBase(Config::MAIN_GBA_ROM_PATHS[Config::GBPLAYER_GBA_INDEX], Libretro::GBPlayer_rom_path);
@@ -324,6 +327,8 @@ bool retro_load_game(const struct retro_game_info* game)
   {
     Config::SetBase(Config::MAIN_GBA_ROM_PATHS[Config::GBPLAYER_GBA_INDEX], std::string{});
   }
+
+#endif
 
   Discord::SetDiscordPresenceEnabled(false);
   Common::SetEnableAlert(false);
@@ -383,7 +388,7 @@ bool retro_load_game(const struct retro_game_info* game)
             core::CPU_CORE,
             static_cast<int>(PowerPC::DefaultCPUCore()))));
 
-#if defined(_DEBUG)
+#if defined(_DEBUG) || defined(__SWITCH2__)
   Config::SetBase(Config::MAIN_FASTMEM, false);
   Config::SetBase(Config::MAIN_FASTMEM_ARENA, false);
 #else

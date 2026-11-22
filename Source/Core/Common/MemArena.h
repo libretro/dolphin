@@ -149,6 +149,10 @@ private:
   vm_address_t m_region_address = 0;
   vm_size_t m_region_size = 0;
 #else
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  u8* m_backing = nullptr;
+  size_t m_backing_size = 0;
+#endif
   int m_shm_fd = 0;
   void* m_reserved_region = nullptr;
   std::size_t m_reserved_region_size = 0;

@@ -682,11 +682,21 @@ static bool CreateDeviceInternal(
 {
   assert(g_video_backend->GetConfigName() == "Vulkan");
 
+#if !defined(__SWITCH2__)
   Vulkan::LoadVulkanLibrary();
+#endif
 
   Init(instance, gpu, surface, get_instance_proc_addr, required_device_extensions,
        num_required_device_extensions, required_device_layers, num_required_device_layers,
        required_features, create_device_wrapper, opaque);
+
+#if defined(__SWITCH2__)
+  if (!Vulkan::LoadVulkanLibrary())
+  {
+    ERROR_LOG_FMT(VIDEO, "Failed to load frontend Vulkan module functions.");
+    return false;
+  }
+#endif
 
   if (!Vulkan::LoadVulkanInstanceFunctions(instance))
   {

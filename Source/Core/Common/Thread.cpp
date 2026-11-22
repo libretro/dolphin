@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "Common/Thread.h"
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+#include <switch.h>
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -175,7 +178,9 @@ void SwitchCurrentThread()
 
 void SetCurrentThreadName(const char* name)
 {
-#ifdef __APPLE__
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  // The SDK has no thread-name API.
+#elif defined(__APPLE__)
   pthread_setname_np(name);
 #elif defined __FreeBSD__ || defined __OpenBSD__
   pthread_set_name_np(pthread_self(), name);
@@ -199,9 +204,15 @@ std::tuple<void*, size_t> GetCurrentThreadStack()
   void* stack_addr;
   size_t stack_size;
 
+#if !(defined(__LIBRETRO__) && defined(__SWITCH2__))
   pthread_t self = pthread_self();
+#endif
 
-#ifdef __APPLE__
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  const Thread* thread = threadGetSelf();
+  stack_addr = thread->stack_mirror;
+  stack_size = thread->stack_sz;
+#elif defined(__APPLE__)
   stack_size = pthread_get_stacksize_np(self);
   stack_addr = reinterpret_cast<u8*>(pthread_get_stackaddr_np(self)) - stack_size;
 #elif defined __OpenBSD__

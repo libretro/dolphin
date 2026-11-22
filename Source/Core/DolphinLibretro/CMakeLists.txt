@@ -39,7 +39,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang")
    set(CLANG 1)
 endif()
 
-if(NOT MSVC AND NOT CLANG)
+if(NOT MSVC AND NOT CLANG AND NOT SWITCH2)
    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 endif()
 
@@ -90,5 +90,21 @@ endif()
 if(APPLE)
   target_sources(dolphin_libretro PRIVATE
     ${CMAKE_SOURCE_DIR}/Source/Core/Common/CommonFuncsObjC.mm
+  )
+endif()
+
+if(SWITCH2)
+  include("$ENV{DEVKITPRO}/libounce/libounce-module.cmake")
+  libounce_add_module(dolphin_libretro)
+  target_link_options(dolphin_libretro PRIVATE
+    "-L$ENV{DEVKITPRO}/portlibs/switch2/lib" "-L$ENV{DEVKITPRO}/portlibs/switch/lib")
+  set_target_properties(dolphin_libretro PROPERTIES
+    SUFFIX "_libounce.elf"
+  )
+  add_custom_command(TARGET dolphin_libretro POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E rename
+      "$<TARGET_FILE_DIR:dolphin_libretro>/dolphin_libretro.nro"
+      "$<TARGET_FILE_DIR:dolphin_libretro>/dolphin_libretro_libounce.nro"
+    VERBATIM
   )
 endif()
