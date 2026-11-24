@@ -94,17 +94,29 @@ if(APPLE)
 endif()
 
 if(SWITCH2)
-  include("$ENV{DEVKITPRO}/libounce/libounce-module.cmake")
-  libounce_add_module(dolphin_libretro)
-  target_link_options(dolphin_libretro PRIVATE
-    "-L$ENV{DEVKITPRO}/portlibs/switch2/lib" "-L$ENV{DEVKITPRO}/portlibs/switch/lib")
   set_target_properties(dolphin_libretro PROPERTIES
-    SUFFIX "_libounce.elf"
+    OUTPUT_NAME "dolphin_libretro"
+    SUFFIX ".so"
+    NO_SONAME TRUE
   )
+
+  target_link_options(dolphin_libretro PRIVATE
+    "-Wl,-soname,dolphin_libretro_libounce.nro"
+    "-Wl,--version-script=${CMAKE_SOURCE_DIR}/Source/Core/DolphinLibretro/link.T"
+  )
+
   add_custom_command(TARGET dolphin_libretro POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E rename
-      "$<TARGET_FILE_DIR:dolphin_libretro>/dolphin_libretro.nro"
-      "$<TARGET_FILE_DIR:dolphin_libretro>/dolphin_libretro_libounce.nro"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+      "${CMAKE_CURRENT_BINARY_DIR}/nro"
+
+    COMMAND "${NX_ELF2NRO_EXE}"
+      "$<TARGET_FILE:dolphin_libretro>"
+      "${CMAKE_CURRENT_BINARY_DIR}/nro/dolphin_libretro_libounce.nro"
+
+    COMMAND "${CMAKE_COMMAND}" -E copy
+      "${CMAKE_CURRENT_BINARY_DIR}/nro/dolphin_libretro_libounce.nro"
+      "${PROJECT_BINARY_DIR}/dolphin_libretro_libounce.nro"
+
     VERBATIM
   )
 endif()
