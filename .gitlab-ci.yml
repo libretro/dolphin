@@ -160,6 +160,8 @@ libretro-build-libounce-aarch64:
    extends:
      - .libretro-libounce-cmake-aarch64
      - .core-defs
+   variables:
+     EXTRA_PATH: nro
 
 ################################## MISC ####################################
 # webOS aarch64
