@@ -252,8 +252,13 @@ vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevice, VkSur
       vkGetPhysicalDeviceSurfaceCapabilitiesKHR_org(physicalDevice, surface, pSurfaceCapabilities);
   if (res == VK_SUCCESS)
   {
-    pSurfaceCapabilities->currentExtent.width = initInfo.width;
-    pSurfaceCapabilities->currentExtent.height = initInfo.height;
+    // These images are offscreen, fixed window bounds shouldn't clamp their resolution
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+    pSurfaceCapabilities->minImageExtent = {1, 1};
+    pSurfaceCapabilities->maxImageExtent = {properties.limits.maxImageDimension2D,
+                                           properties.limits.maxImageDimension2D};
+    pSurfaceCapabilities->currentExtent = {initInfo.width, initInfo.height};
   }
   return res;
 }
